@@ -1,0 +1,115 @@
+{
+  "source": "docs/데이터_사전.md",
+  "about": "직원 약 580명의 중견 IT·제조 회사 인사 시스템 추출본(합성 데이터). 부서 8개. 기간 2024-07-01 ~ 2025-12-31, 급여는 2024-07 ~ 2025-12 지급분.",
+  "sql_dialect": "DuckDB",
+  "tables": [
+    {
+      "name": "employees",
+      "grain": "직원 1명 (퇴사자 포함)",
+      "rows": 688,
+      "key": ["emp_id"],
+      "columns": [
+        {"name": "emp_id", "type": "VARCHAR", "desc": "사번", "examples": ["E10001"]},
+        {"name": "dept", "type": "VARCHAR", "desc": "부서 (8개)", "examples": ["개발", "생산", "영업", "마케팅", "고객지원", "재무", "인사", "구매"]},
+        {"name": "job_family", "type": "VARCHAR", "desc": "직무 (14개)", "examples": ["백엔드", "생산직", "국내영업"]},
+        {"name": "grade", "type": "VARCHAR", "desc": "직급", "examples": ["사원", "대리", "과장", "차장", "부장"]},
+        {"name": "position", "type": "VARCHAR", "desc": "직책", "examples": ["팀원", "팀장", "본부장"]},
+        {"name": "employment_type", "type": "VARCHAR", "desc": "고용 형태", "examples": ["정규직", "계약직"]},
+        {"name": "hire_date", "type": "DATE", "desc": "입사일 (2012-08-27 ~ 2025-12-29)", "examples": ["2016-06-09"]},
+        {"name": "hire_source", "type": "VARCHAR", "desc": "입사 경로", "examples": ["공채", "채용사이트", "헤드헌팅", "사내추천", "자사홈페이지"]},
+        {"name": "career_years_at_hire", "type": "INTEGER", "desc": "입사 당시 경력 연수, 0 = 신입", "examples": [0, 5]},
+        {"name": "leave_date", "type": "DATE", "desc": "퇴사일. 재직 중이면 NULL", "examples": ["2025-07-15", null]},
+        {"name": "leave_reason", "type": "VARCHAR", "desc": "퇴사 사유 (퇴사자만, 아니면 NULL)", "examples": ["업무량·워라밸", "처우·연봉", "커리어 성장", "개인 사정", "계약만료"]}
+      ]
+    },
+    {
+      "name": "attendance",
+      "grain": "직원 1명의 근무일 하루 (주말·공휴일 행 없음)",
+      "rows": 207454,
+      "key": ["emp_id", "work_date"],
+      "columns": [
+        {"name": "emp_id", "type": "VARCHAR", "desc": "사번", "examples": ["E10001"]},
+        {"name": "work_date", "type": "DATE", "desc": "근무일", "examples": ["2024-07-01"]},
+        {"name": "work_type", "type": "VARCHAR", "desc": "근무 형태", "examples": ["근무", "연차", "병가"]},
+        {"name": "regular_hours", "type": "DOUBLE", "desc": "정규 근무 시간 (근무 8, 연차·병가 0)", "examples": [8.0, 0.0]},
+        {"name": "overtime_hours", "type": "DOUBLE", "desc": "초과근로 시간 (0.5시간 단위)", "examples": [0.0, 0.5]}
+      ]
+    },
+    {
+      "name": "payroll",
+      "grain": "직원 1명의 한 달 급여 항목 1개 (한 사람이 한 달에 최대 3행)",
+      "rows": 30633,
+      "key": ["pay_month", "emp_id", "pay_item"],
+      "columns": [
+        {"name": "pay_month", "type": "VARCHAR", "desc": "지급 월, 'YYYY-MM' 문자열 (날짜 아님)", "examples": ["2024-07", "2025-12"]},
+        {"name": "emp_id", "type": "VARCHAR", "desc": "사번", "examples": ["E10001"]},
+        {"name": "pay_item", "type": "VARCHAR", "desc": "급여 항목", "examples": ["기본급여", "수당급여", "기타급여"]},
+        {"name": "amount", "type": "BIGINT", "desc": "금액(원)", "examples": [7632000, 200000]}
+      ]
+    },
+    {
+      "name": "job_openings",
+      "grain": "채용 공고 1건",
+      "rows": 146,
+      "key": ["opening_id"],
+      "columns": [
+        {"name": "opening_id", "type": "VARCHAR", "desc": "공고 번호", "examples": ["R5031"]},
+        {"name": "dept", "type": "VARCHAR", "desc": "뽑는 부서", "examples": ["생산", "개발"]},
+        {"name": "job_family", "type": "VARCHAR", "desc": "뽑는 직무", "examples": ["생산직", "프론트엔드"]},
+        {"name": "opening_type", "type": "VARCHAR", "desc": "결원 = 퇴사자 대체, 증원 = 새 자리", "examples": ["결원", "증원"]},
+        {"name": "open_date", "type": "DATE", "desc": "공고일", "examples": ["2024-07-07"]},
+        {"name": "close_date", "type": "DATE", "desc": "마감일(최종 합격 확정일). 진행 중이면 NULL", "examples": ["2024-07-31", null]},
+        {"name": "status", "type": "VARCHAR", "desc": "공고 상태", "examples": ["채용완료", "진행중", "취소"]},
+        {"name": "replaced_emp_id", "type": "VARCHAR", "desc": "결원 공고일 때 대체 대상 사번 (→ employees.emp_id)", "examples": ["E10189", null]}
+      ]
+    },
+    {
+      "name": "applicants",
+      "grain": "공고 1건에 지원한 사람 1명",
+      "rows": 3312,
+      "key": ["applicant_id"],
+      "columns": [
+        {"name": "applicant_id", "type": "VARCHAR", "desc": "지원자 번호", "examples": ["A200001"]},
+        {"name": "opening_id", "type": "VARCHAR", "desc": "지원한 공고 (→ job_openings.opening_id)", "examples": ["R5031"]},
+        {"name": "apply_date", "type": "DATE", "desc": "지원일", "examples": ["2024-07-08"]},
+        {"name": "source", "type": "VARCHAR", "desc": "지원 경로", "examples": ["채용사이트", "헤드헌팅", "사내추천", "자사홈페이지"]},
+        {"name": "last_stage", "type": "VARCHAR", "desc": "도달한 마지막 전형. 순서: 서류 → 1차면접 → 2차면접 → 처우협의 → 입사", "examples": ["서류", "1차면접", "2차면접", "처우협의", "입사"]},
+        {"name": "hired_emp_id", "type": "VARCHAR", "desc": "입사했으면 그 사번(→ employees.emp_id), 아니면 NULL", "examples": [null]}
+      ]
+    },
+    {
+      "name": "reviews",
+      "grain": "직원 1명의 한 해 성과 평가",
+      "rows": 1085,
+      "key": ["emp_id", "review_year"],
+      "columns": [
+        {"name": "emp_id", "type": "VARCHAR", "desc": "사번", "examples": ["E10001"]},
+        {"name": "review_year", "type": "INTEGER", "desc": "평가 연도", "examples": [2024, 2025]},
+        {"name": "rating", "type": "VARCHAR", "desc": "평가 등급, S가 가장 높음", "examples": ["S", "A", "B", "C"]}
+      ]
+    }
+  ],
+  "relationships": [
+    "employees.emp_id 1 : N attendance.emp_id",
+    "employees.emp_id 1 : N payroll.emp_id",
+    "employees.emp_id 1 : N reviews.emp_id",
+    "job_openings.opening_id 1 : N applicants.opening_id",
+    "applicants.hired_emp_id → employees.emp_id (입사한 사람만)",
+    "job_openings.replaced_emp_id → employees.emp_id (결원 공고만)"
+  ],
+  "metrics": [
+    {"name": "인건비", "definition": "payroll.amount 의 합 = 기본급여 + 수당급여 + 기타급여", "sql_hint": "SUM(amount) FROM payroll"},
+    {"name": "월 인원", "definition": "그 달 payroll 에 한 번이라도 나온 사번 수. 행 수를 세면 항목 수만큼 세 배가 된다", "sql_hint": "COUNT(DISTINCT emp_id) FROM payroll WHERE pay_month = 'YYYY-MM'"},
+    {"name": "재직자", "definition": "기준일에 hire_date ≤ 기준일 이고 leave_date 가 NULL 이거나 기준일 이후인 직원", "sql_hint": "hire_date <= d AND (leave_date IS NULL OR leave_date > d)"},
+    {"name": "1인당 초과근로", "definition": "그 달 overtime_hours 합 ÷ 그 달 attendance 에 나온 사번 수", "sql_hint": "SUM(overtime_hours) / COUNT(DISTINCT emp_id) FROM attendance GROUP BY 월"},
+    {"name": "퇴사자 수", "definition": "leave_date 가 그 기간에 있는 직원 수", "sql_hint": "COUNT(*) FROM employees WHERE leave_date BETWEEN 시작 AND 끝"},
+    {"name": "채용 기간", "definition": "채용완료 공고의 close_date − open_date (일)", "sql_hint": "close_date - open_date FROM job_openings WHERE status = '채용완료'"}
+  ],
+  "rules": [
+    "시간외수당은 익월 지급: 수당급여 = 전월 초과근로 시간 × 통상시급 × 1.5 + 직책수당(팀장 30만 원 · 본부장 60만 원). 초과근로가 늘면 수당급여는 한 달 뒤에 오른다.",
+    "정기 인상은 3월: 2025-03 급여부터 기본급여가 올랐다.",
+    "기타급여: 매달 식대 20만 원. 명절 상여(기본급여의 50%)는 2024-09 · 2025-01 · 2025-10 에 나간다. 전년도 성과급은 1월에 나간다.",
+    "입사·퇴사가 있는 달의 기본급여·식대는 재직 일수만큼 일할 계산한다.",
+    "성과 평가는 그해 9월 30일 이전 입사자 중 12월 31일 재직자만 받는다."
+  ]
+}

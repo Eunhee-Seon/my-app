@@ -1,0 +1,6 @@
+.env
+.env.*
+tools/
+다음달/
+__pycache__/
+.claude/

@@ -1,0 +1,57 @@
+[
+  {
+    "id": "monthly-headcount-cost",
+    "question": "월별 인원과 인건비",
+    "sql": "SELECT pay_month AS 월, COUNT(DISTINCT emp_id) AS 인원, SUM(amount) AS 인건비\nFROM payroll\nGROUP BY pay_month\nORDER BY pay_month",
+    "tables": ["payroll"],
+    "filters": ["전체 지급 월"],
+    "metrics_used": ["월 인원", "인건비"],
+    "drill": {
+      "title": "가장 최근 달 인건비의 전월 대비 증감 — 급여 항목별 × 부서별",
+      "sql": "WITH m AS (\n  SELECT MAX(pay_month) AS cur,\n         strftime(strptime(MAX(pay_month) || '-01', '%Y-%m-%d') - INTERVAL 1 MONTH, '%Y-%m') AS prev\n  FROM payroll\n)\nSELECT p.pay_item AS 급여항목, e.dept AS 부서,\n       SUM(CASE WHEN p.pay_month = m.prev THEN p.amount ELSE 0 END) AS 전월,\n       SUM(CASE WHEN p.pay_month = m.cur THEN p.amount ELSE 0 END) AS 당월,\n       SUM(CASE WHEN p.pay_month = m.cur THEN p.amount ELSE -p.amount END) AS 증감\nFROM payroll p JOIN employees e ON p.emp_id = e.emp_id, m\nWHERE p.pay_month IN (m.prev, m.cur)\nGROUP BY 1, 2\nORDER BY abs(증감) DESC",
+      "split_by": ["급여항목", "부서"],
+      "measure_column": "증감"
+    },
+    "verified": "2026-11-21 · data/ 기준 18행, Python duckdb와 일치"
+  },
+  {
+    "id": "monthly-overtime",
+    "question": "월별 1인당 초과근로 시간",
+    "sql": "SELECT strftime(work_date, '%Y-%m') AS 월,\n       SUM(overtime_hours) AS 초과근로합,\n       COUNT(DISTINCT emp_id) AS 인원,\n       ROUND(SUM(overtime_hours) / COUNT(DISTINCT emp_id), 2) AS 일인당_초과근로\nFROM attendance\nGROUP BY 1\nORDER BY 1",
+    "tables": ["attendance"],
+    "filters": ["전체 근무일"],
+    "metrics_used": ["1인당 초과근로"],
+    "drill": {
+      "title": "가장 최근 달 초과근로 시간 — 부서별",
+      "sql": "WITH m AS (SELECT strftime(MAX(work_date), '%Y-%m') AS cur FROM attendance)\nSELECT e.dept AS 부서,\n       SUM(a.overtime_hours) AS 초과근로합,\n       COUNT(DISTINCT a.emp_id) AS 인원\nFROM attendance a JOIN employees e ON a.emp_id = e.emp_id, m\nWHERE strftime(a.work_date, '%Y-%m') = m.cur\nGROUP BY 1\nORDER BY 초과근로합 DESC",
+      "split_by": ["부서"],
+      "measure_column": "초과근로합"
+    },
+    "verified": "2026-11-21 · data/ 기준 18행, Python duckdb와 일치"
+  },
+  {
+    "id": "monthly-leavers",
+    "question": "월별 퇴사자 수 (2024-07 이후)",
+    "sql": "SELECT strftime(leave_date, '%Y-%m') AS 월, COUNT(*) AS 퇴사자수\nFROM employees\nWHERE leave_date >= DATE '2024-07-01'\nGROUP BY 1\nORDER BY 1",
+    "tables": ["employees"],
+    "filters": ["퇴사일 2024-07-01 이후"],
+    "metrics_used": ["퇴사자 수"],
+    "drill": {
+      "title": "같은 기간 퇴사자 — 퇴사 사유별",
+      "sql": "SELECT leave_reason AS 퇴사사유, COUNT(*) AS 퇴사자수\nFROM employees\nWHERE leave_date >= DATE '2024-07-01'\nGROUP BY 1\nORDER BY 퇴사자수 DESC",
+      "split_by": ["퇴사사유"],
+      "measure_column": "퇴사자수"
+    },
+    "verified": "2026-11-21 · data/ 기준, Python duckdb와 일치"
+  },
+  {
+    "id": "time-to-hire",
+    "question": "공고 유형별 채용 기간",
+    "sql": "SELECT opening_type AS 공고유형,\n       COUNT(*) AS 채용완료_공고수,\n       ROUND(AVG(close_date - open_date), 1) AS 평균_채용기간_일,\n       MEDIAN(close_date - open_date) AS 중앙값_일\nFROM job_openings\nWHERE status = '채용완료'\nGROUP BY 1\nORDER BY 1",
+    "tables": ["job_openings"],
+    "filters": ["status = 채용완료"],
+    "metrics_used": ["채용 기간"],
+    "drill": null,
+    "verified": "2026-11-21 · data/ 기준 2행, Python duckdb와 일치"
+  }
+]
