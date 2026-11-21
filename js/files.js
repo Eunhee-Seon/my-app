@@ -1,4 +1,4 @@
-// 내 파일 탭: CSV · xlsx 를 브라우저 안에서 읽어 테이블로 올린다. 파일은 서버로 보내지 않는다.
+// 파일 업로드 탭: CSV · xlsx 를 브라우저 안에서 읽어 테이블로 올린다. 파일은 서버로 보내지 않는다.
 import * as db from "./db.js";
 import { esc } from "./explain.js";
 import { renderTable } from "./ask.js";
@@ -56,10 +56,11 @@ async function readXlsx(file) {
 }
 
 async function handleFile(file) {
-  const card = document.createElement("div");
-  card.className = "card";
-  card.innerHTML = `<h3>${esc(file.name)}</h3><p class="hint">읽는 중…</p>`;
-  $("file-results").prepend(card);
+  const tbody = resultsBody();
+  const row = document.createElement("tr");
+  row.innerHTML = `<td>${esc(file.name)}</td><td>—</td><td class="st-run">읽는 중…</td><td class="num">—</td><td class="num">—</td><td>—</td><td></td><td></td>`;
+  tbody.prepend(row);
+  const card = row; // 아래 결과 표시는 이 행을 채운다
   try {
     const ext = (file.name.match(/\.([^.]+)$/)?.[1] || "").toLowerCase();
     let parsed;
@@ -81,20 +82,59 @@ async function handleFile(file) {
     const same = fileRows === r.rows;
     const preview = await db.run(`SELECT * FROM ${db.quoteIdent(table)} LIMIT 20`);
     card.innerHTML = `
-      <h3>${esc(file.name)} → 테이블 <code>${esc(table)}</code>
-        <span class="badge ${r.replaced ? "warn" : "ok"}">${r.replaced ? "기존 테이블을 바꿈" : "새 테이블"}</span></h3>
-      ${notes.length ? `<ul class="issues">${notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : ""}
-      <table class="counts"><tr>
-        <td>파일에서 읽은 행 수 <b>${fileRows.toLocaleString()}</b></td>
-        <td>테이블에 올라간 행 수 <b>${r.rows.toLocaleString()}</b></td>
-        <td class="${same ? "ok" : "bad"}">${same ? "✓ 같음" : "✕ 다름 — 이 테이블의 결과는 믿지 마세요"}</td>
-      </tr></table>
-      <p class="hint">컬럼 ${r.columns.length}개: ${r.columns.map((c) => `${esc(c.name)} (${esc(c.type)})`).join(", ")}</p>
-      <p class="hint">처음 20행</p>
-      ${renderTable(preview, 20)}`;
+      <td>${esc(file.name)}</td>
+      <td><code class="inline">${esc(table)}</code></td>
+      <td>${r.replaced ? "기존 테이블 교체" : "새 테이블"}</td>
+      <td class="num">${fileRows.toLocaleString()}</td>
+      <td class="num">${r.rows.toLocaleString()}</td>
+      <td class="${same ? "res-ok" : "res-bad"}">${same ? "✓ 일치" : "✕ 불일치 — 이 테이블의 결과는 사용하지 마세요"}</td>
+      <td>${notes.length ? `<ul class="issues">${notes.map((n) => `<li>${esc(n)}</li>`).join("")}</ul>` : '<span class="null">—</span>'}</td>
+      <td><button type="button" class="btn small link pv-toggle" aria-expanded="false">미리보기</button></td>`;
+    const pv = document.createElement("tr");
+    pv.className = "detail-row";
+    pv.hidden = true;
+    pv.innerHTML = `<td colspan="8">
+      <p class="cols-head">컬럼 ${r.columns.length}개 · 처음 20행</p>
+      <p class="note">${r.columns.map((c) => `${esc(c.name)} (${esc(c.type)})`).join(", ")}</p>
+      ${renderTable(preview, 20)}</td>`;
+    card.after(pv);
+    card.querySelector(".pv-toggle").addEventListener("click", (e) => {
+      pv.hidden = !pv.hidden;
+      e.currentTarget.setAttribute("aria-expanded", String(!pv.hidden));
+    });
   } catch (e) {
-    card.innerHTML = `<h3>${esc(file.name)}</h3><p class="msg error">올리지 못했습니다: ${esc(e.message)}</p>`;
+    card.innerHTML = `<td>${esc(file.name)}</td><td>—</td><td class="st-error" colspan="6">적용하지 못했습니다: ${esc(e.message)}</td>`;
   }
+}
+
+/** 적용 결과 표의 tbody(처음이면 만든다). */
+function resultsBody() {
+  let tbody = $("file-results").querySelector("tbody");
+  if (!tbody) {
+    $("file-results").innerHTML = `<div class="table-scroll auto"><table class="grid">
+      <thead><tr><th>파일명</th><th>연결 테이블</th><th>처리</th><th class="num">파일 행 수</th><th class="num">적재 행 수</th><th>결과</th><th>안내</th><th></th></tr></thead>
+      <tbody></tbody></table></div>`;
+    tbody = $("file-results").querySelector("tbody");
+  }
+  return tbody;
+}
+
+/** 필요한 파일 목록: 기본 테이블 6개와 지금 적용된 데이터, 그 밖에 올린 테이블. */
+function renderRequired() {
+  const rows = db.BASE_TABLES.map((t) => {
+    const r = db.registry.get(t);
+    const state = !r ? '<span class="st-idle">로딩 전</span>'
+      : r.kind === "upload" ? '<span class="tag warn">업로드 파일 적용</span>' : '<span class="tag">기본 데이터</span>';
+    const check = r ? (r.fileRows === r.rows ? '<span class="res-ok">✓</span>' : '<span class="res-bad">✕</span>') : "";
+    return `<tr><td>${esc(t)}.csv / ${esc(t)}.xlsx</td><td><code class="inline">${esc(t)}</code></td>
+      <td>${r ? esc(r.source) : "—"}</td><td class="num">${r ? r.rows.toLocaleString() : "—"}</td><td>${state} ${check}</td></tr>`;
+  });
+  const extra = [...db.registry.values()].filter((r) => !db.BASE_TABLES.includes(r.name)).map((r) =>
+    `<tr><td>(추가) ${esc(r.source)}</td><td><code class="inline">${esc(r.name)}</code></td><td>${esc(r.source)}</td>
+      <td class="num">${r.rows.toLocaleString()}</td><td><span class="tag warn">추가 테이블</span> ${r.fileRows === r.rows ? '<span class="res-ok">✓</span>' : '<span class="res-bad">✕</span>'}</td></tr>`);
+  $("file-required").innerHTML = `<div class="table-scroll auto"><table class="grid">
+    <thead><tr><th>파일명</th><th>연결 테이블</th><th>현재 데이터</th><th class="num">행 수</th><th>상태</th></tr></thead>
+    <tbody>${rows.concat(extra).join("")}</tbody></table></div>`;
 }
 
 async function handleFiles(list) {
@@ -102,6 +142,8 @@ async function handleFiles(list) {
 }
 
 export function setup() {
+  window.addEventListener("tables-changed", renderRequired);
+  renderRequired();
   const zone = $("drop-zone");
   const input = $("file-input");
   zone.addEventListener("click", () => input.click());

@@ -46,27 +46,28 @@ export function checkBasis(ai, sql, knownTables, schema) {
   return { inSql, issues };
 }
 
-export function renderBasis(ai, check, schema) {
+/** 지표 이름 목록 → 데이터 사전 정의가 붙은 목록 HTML */
+export function metricList(names, schema) {
   const defs = new Map((schema.metrics || []).map((m) => [m.name, m.definition]));
-  const metrics = (ai.metrics_used || []).length
-    ? `<ul>${ai.metrics_used.map((m) => `<li><b>${esc(m)}</b> — ${esc(defs.get(m) || "데이터 사전에 없음")}</li>`).join("")}</ul>`
-    : '<span class="hint">AI가 지표 정의를 밝히지 않았습니다.</span>';
-  const badge = check.issues.length
-    ? `<span class="badge warn">확인 필요</span>`
-    : `<span class="badge ok">SQL과 일치</span>`;
+  if (!names || !names.length) return '<span class="null">—</span>';
+  return `<ul>${names.map((m) => `<li><b>${esc(m)}</b> — ${esc(defs.get(m) || "데이터 사전에 없는 지표")}</li>`).join("")}</ul>`;
+}
+
+export function renderBasis(ai, check, schema) {
+  const badge = check.issues.length ? `<span class="tag warn">확인 필요</span>` : `<span class="tag ok">SQL과 일치</span>`;
   const issues = check.issues.length ? `<ul class="issues">${check.issues.map((i) => `<li>${esc(i)}</li>`).join("")}</ul>` : "";
   return `
-    <div class="card">
-      <h3>① 산출 근거 ${badge}</h3>
+    <section class="block">
+      <h3 class="sec">산출 근거 ${badge}</h3>
       ${issues}
-      <dl class="meta">
-        <div><dt>읽은 테이블 (AI)</dt><dd>${esc((ai.tables || []).join(", ") || "—")}</dd></div>
-        <div><dt>SQL 속 테이블</dt><dd>${esc(check.inSql.join(", ") || "—")}</dd></div>
-        <div><dt>조건</dt><dd>${esc((ai.filters || []).join(" · ") || "—")}</dd></div>
-        <div><dt>지표 정의</dt><dd>${metrics}</dd></div>
-        ${ai.note ? `<div><dt>AI 메모</dt><dd>${esc(ai.note)}</dd></div>` : ""}
-      </dl>
-    </div>`;
+      <table class="kv"><tbody>
+        <tr><th>사용 테이블 (SQL)</th><td>${esc(check.inSql.join(", ") || "—")}</td></tr>
+        <tr><th>설명상 테이블</th><td>${esc((ai.tables || []).join(", ") || "—")}</td></tr>
+        <tr><th>조회 조건</th><td>${esc((ai.filters || []).join(" · ") || "—")}</td></tr>
+        <tr><th>지표 정의</th><td>${metricList(ai.metrics_used, schema)}</td></tr>
+        ${ai.note ? `<tr><th>계산 메모</th><td>${esc(ai.note)}</td></tr>` : ""}
+      </tbody></table>
+    </section>`;
 }
 
 const isNumCol = (rows, name) => {
@@ -107,9 +108,13 @@ export function biggestChunk(res, measureColumn, splitBy = []) {
 const n0 = (v) => v.toLocaleString("ko-KR", { maximumFractionDigits: 2 });
 const signed = (v) => (v > 0 ? "+" : "") + n0(v);
 
+// 증감을 나타내는 값일 때만 + 부호를 붙인다(표시만 다르고 계산은 같다).
+const isChangeMeasure = (c) => c.mixedSigns || /증감|증가|감소|차이|변화|변동|delta|diff|change/i.test(c.measure);
+
 export function chunkSentence(c) {
-  if (!c) return "결과에서 크기를 나타내는 숫자 컬럼을 찾지 못해 가장 큰 덩어리를 계산하지 않았습니다.";
-  const share = c.share === null ? "전체 합이 0이라 비중 계산 불가" : `전체 ${signed(c.total)}의 ${(c.share * 100).toFixed(1)}%`;
-  const mixed = c.mixedSigns ? " (늘어난 덩어리와 줄어든 덩어리가 섞여 있어 비중은 순합계 기준)" : "";
-  return `가장 큰 덩어리: ${c.label} — ${c.measure} ${signed(c.value)} · ${share}${mixed}`;
+  if (!c) return "결과에서 크기를 나타내는 숫자 컬럼을 찾지 못해 최대 기여 항목을 계산하지 않았습니다.";
+  const f = isChangeMeasure(c) ? signed : n0;
+  const share = c.share === null ? "전체 합이 0이라 비중 계산 불가" : `전체 ${f(c.total)}의 ${(c.share * 100).toFixed(1)}%`;
+  const mixed = c.mixedSigns ? " (증가 · 감소 항목이 섞여 있어 비중은 순합계 기준)" : "";
+  return `${c.label} — ${c.measure} ${f(c.value)} · ${share}${mixed}`;
 }
