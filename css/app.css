@@ -268,7 +268,83 @@ details.sql .note { margin-top: 10px; }
 .res-bad { color: var(--err); font-weight: 600; }
 code.inline { font: 12.5px var(--mono); }
 
+/* ── 운영 현황 · 차트 ─────────────────── */
+.head-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.inline-field { display: inline-flex; gap: 6px; align-items: center; font-size: 13px; color: var(--muted); }
+select {
+  min-height: 32px;
+  padding: 4px 8px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+.stale-bar { margin: 0 0 12px; padding: 8px 12px; border: 1px solid #ecd8a6; background: #fffbeb; color: var(--warn); font-weight: 600; }
+.notice { margin: 0 0 12px; padding: 8px 12px; border: 1px solid var(--line); background: var(--subtle); color: var(--text); }
+.sec-title .sub { font-weight: 400; color: var(--muted); font-size: 12.5px; margin-left: 6px; }
+.viz-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0 28px; margin-top: 8px; }
+.viz { padding: 14px 0 12px; border-bottom: 1px solid var(--line); min-width: 0; }
+.viz-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; margin-bottom: 6px; }
+.viz-head h3 { margin: 0; font-size: 14px; font-weight: 700; color: var(--text-strong); }
+.viz-head .sub { color: var(--muted); font-size: 12px; }
+.viz details.sql { margin-top: 6px; padding-top: 6px; border-top: 0; }
+.viz details.sql summary { font-weight: 500; font-size: 12.5px; color: var(--muted); }
+.chart-box { min-height: 40px; }
+svg.chart { display: block; max-width: 100%; overflow: visible; }
+svg.chart .hit line { stroke: transparent; stroke-width: 1; }
+svg.chart .hit:hover line { stroke: #9ca3af; }
+svg.chart .hit-row:hover rect:first-child { fill: #f5f5f5; }
+.chart-legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 0 0 4px; font-size: 12px; color: var(--text); }
+.chart-legend i { display: inline-block; width: 14px; height: 3px; margin-right: 5px; vertical-align: middle; border-radius: 1px; }
+.chart-tip {
+  position: fixed; z-index: 50; pointer-events: none;
+  padding: 6px 9px; border: 1px solid var(--line-strong); background: #fff; color: var(--text);
+  font-size: 12px; line-height: 1.5; box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+.chart-tip .tt-h { font-weight: 700; margin-bottom: 2px; }
+.chart-tip i { display: inline-block; width: 8px; height: 8px; margin-right: 5px; border-radius: 1px; }
+.chart-tip b { font-variant-numeric: tabular-nums; }
+
+/* ── 검토 항목 · 조치 ─────────────────── */
+.filters { display: flex; gap: 8px 12px; flex-wrap: wrap; align-items: flex-end; margin: 0 0 10px; }
+.filters label { display: flex; flex-direction: column; gap: 2px; font-size: 12px; color: var(--muted); }
+.filters input[type="text"] { min-height: 32px; font-size: 13px; width: 140px; flex: none; }
+.counts-line { display: flex; gap: 6px 22px; flex-wrap: wrap; margin: 0; padding: 8px 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); font-size: 13px; }
+.counts-line div { display: flex; gap: 6px; }
+.counts-line dt { color: var(--muted); }
+.counts-line dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+table.grid td.reason { white-space: normal; min-width: 180px; max-width: 320px; }
+table.grid td.mono, .mono { font: 12px var(--mono); }
+.review-table td { white-space: nowrap; }
+.pager { display: flex; gap: 10px; align-items: center; justify-content: flex-end; margin: 8px 0 0; font-size: 12.5px; color: var(--muted); }
+.subnav { display: flex; gap: 0; border-bottom: 1px solid var(--line); margin: 0 0 14px; overflow-x: auto; }
+.subnav button { padding: 7px 12px; border: 0; border-bottom: 2px solid transparent; background: none; font: inherit; font-size: 13px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+.subnav button[aria-selected="true"] { color: var(--text-strong); font-weight: 700; border-bottom-color: var(--text); }
+.status-kpi { grid-template-columns: repeat(6, minmax(0, 1fr)); margin-bottom: 4px; }
+.procedure { margin: 0 0 12px; }
+.procedure ol { margin: 4px 0 0; padding-left: 20px; }
+.procedure .sub { font-weight: 400; color: var(--muted); font-size: 12px; }
+.act-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 14px; padding: 12px 0; border-top: 1px solid var(--line); }
+.act-form label { display: flex; flex-direction: column; gap: 3px; font-size: 12.5px; color: var(--muted); font-weight: 600; }
+.act-form label.check { flex-direction: row; align-items: center; gap: 6px; padding-top: 18px; }
+.act-form .wide { grid-column: 1 / -1; }
+.act-form input[type="text"], .act-form input[type="date"], .act-form input[type="number"] {
+  min-height: 32px; padding: 4px 8px; border: 1px solid var(--line-strong); border-radius: 3px; font: inherit; font-size: 13px; color: var(--text); background: var(--surface); width: 100%;
+}
+.act-form textarea { font-family: inherit; font-size: 13px; background: var(--surface); }
+.form-foot { display: flex; gap: 10px; align-items: center; }
+label.btn { cursor: pointer; }
+
 /* ── 좁은 화면 ────────────────────────── */
+@media (max-width: 960px) {
+  .viz-grid { grid-template-columns: minmax(0, 1fr); }
+  .status-kpi { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .status-kpi .kpi-item:nth-child(4) { border-left: 0; padding-left: 0; }
+  .status-kpi .kpi-item:nth-child(n+4) { border-top: 1px solid var(--line); }
+  .act-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 @media (max-width: 860px) {
   .kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .kpi-item:nth-child(3) { border-left: 0; padding-left: 0; }
@@ -300,4 +376,10 @@ code.inline { font: 12.5px var(--mono); }
   table.kv th { font-size: 12px; }
   .input-row { flex-wrap: wrap; }
   .input-row .btn { flex: 1; }
+  .act-form { grid-template-columns: minmax(0, 1fr); }
+  table.grid td.reason { min-width: 150px; }
+  .filters label { flex: 1 1 140px; }
+  .filters input[type="text"], .filters select { width: 100%; }
+  .head-tools { width: 100%; }
+  .page-head { flex-wrap: wrap; }
 }

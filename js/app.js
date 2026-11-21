@@ -4,31 +4,24 @@ import * as askTab from "./ask.js";
 import * as savedTab from "./saved.js";
 import * as tablesTab from "./tables.js";
 import * as filesTab from "./files.js";
-
-const TABS = ["saved", "ask", "tables", "files"];
-
-function showTab(name) {
-  if (!TABS.includes(name)) name = "saved";
-  document.querySelectorAll(".tabs button").forEach((btn) => {
-    btn.setAttribute("aria-selected", String(btn.dataset.tab === name));
-  });
-  TABS.forEach((t) => {
-    document.getElementById(`tab-${t}`).hidden = t !== name;
-  });
-  history.replaceState(null, "", `#${name}`);
-}
+import * as opsTab from "./ops.js";
+import * as reviewTab from "./review.js";
+import * as actionsTab from "./actions.js";
+import { showTab, currentTab } from "./nav.js";
 
 document.querySelectorAll(".tabs button").forEach((btn) => {
   btn.addEventListener("click", () => showTab(btn.dataset.tab));
 });
 window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
-showTab(location.hash.slice(1));
 
 const status = document.getElementById("db-status");
 const setReady = (ready) => {
   askTab.setReady(ready);
   savedTab.setReady(ready);
   filesTab.setReady(ready);
+  opsTab.setReady(ready, currentTab());
+  reviewTab.setReady(ready, currentTab());
+  actionsTab.setReady(ready, currentTab());
 };
 
 /** 헤더: 연결 테이블 수, 급여 기준월(payroll 의 가장 최근 pay_month). 알 수 없으면 '—'. */
@@ -48,7 +41,11 @@ async function updateHeader() {
 askTab.setup();
 tablesTab.setup();
 filesTab.setup();
+opsTab.setup();
+reviewTab.setup();
+actionsTab.setup();
 await savedTab.setup();
+showTab(currentTab());
 setReady(false);
 
 db.init((msg) => (status.textContent = `로딩 중 · ${msg.replace(/ 올리는 중…| 중…/g, "")}`))

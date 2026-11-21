@@ -4,6 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>HR 운영 리포트</title>
+  <link rel="icon" href="data:,">
   <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
@@ -17,14 +18,51 @@
   </header>
 
   <nav class="tabs" role="tablist" aria-label="메뉴">
-    <button role="tab" data-tab="saved" aria-selected="true">정기 리포트</button>
+    <button role="tab" data-tab="ops" aria-selected="true">운영 현황</button>
+    <button role="tab" data-tab="saved" aria-selected="false">정기 리포트</button>
     <button role="tab" data-tab="ask" aria-selected="false">직접 조회</button>
+    <button role="tab" data-tab="review" aria-selected="false">검토 항목</button>
+    <button role="tab" data-tab="actions" aria-selected="false">조치 현황</button>
     <button role="tab" data-tab="tables" aria-selected="false">데이터 구조</button>
     <button role="tab" data-tab="files" aria-selected="false">파일 업로드</button>
   </nav>
 
   <main>
-    <section id="tab-saved" class="panel" role="tabpanel">
+    <section id="tab-ops" class="panel" role="tabpanel">
+      <div class="page-head">
+        <h1>운영 현황</h1>
+        <div class="head-tools">
+          <label class="inline-field">기준월 <select id="ops-month"></select></label>
+          <button id="ops-refresh" class="btn" disabled>다시 계산</button>
+        </div>
+      </div>
+      <p class="desc">employees · attendance · payroll 기준 인력 · 근태 · 인건비 현황입니다. 검토 항목은 설정한 기준에서 벗어난 근거이며 위반 판정이 아닙니다.</p>
+      <p id="ops-stale" class="stale-bar" hidden>데이터 또는 기준이 바뀌었습니다. 필요한 파일을 모두 올린 뒤 «다시 계산»을 누르세요.</p>
+      <div id="ops-body"><p class="msg">데이터를 불러오는 중…</p></div>
+    </section>
+
+    <section id="tab-review" class="panel" role="tabpanel" hidden>
+      <div class="page-head">
+        <h1>검토 항목</h1>
+        <button id="review-refresh" class="btn" disabled>다시 계산</button>
+      </div>
+      <p class="desc">근무 기록 · 조직 지표가 검토 기준에서 벗어난 항목입니다. 직원의 문제를 판정하지 않으며, 확인할 근거와 조치 기록을 관리합니다.</p>
+      <p id="review-stale" class="stale-bar" hidden>데이터 또는 기준이 바뀌었습니다. «다시 계산»을 누르면 새 기준 · 데이터로 항목을 다시 만듭니다. 기존 조치 기록은 유지됩니다.</p>
+      <div id="review-body"><p class="msg">데이터를 불러오는 중…</p></div>
+    </section>
+
+    <section id="tab-actions" class="panel" role="tabpanel" hidden>
+      <div class="page-head"><h1>조치 현황</h1></div>
+      <nav id="act-subnav" class="subnav" aria-label="조치 현황 메뉴">
+        <button type="button" data-sub="list" aria-selected="true">조치 목록</button>
+        <button type="button" data-sub="follow" aria-selected="false">후속 점검</button>
+        <button type="button" data-sub="criteria" aria-selected="false">검토 기준</button>
+        <button type="button" data-sub="storage" aria-selected="false">저장 범위 · 운영 설계</button>
+      </nav>
+      <div id="act-body"><p class="msg">데이터를 불러오는 중…</p></div>
+    </section>
+
+    <section id="tab-saved" class="panel" role="tabpanel" hidden>
       <div class="page-head">
         <h1>정기 리포트</h1>
         <button id="run-all" class="btn primary" disabled>전체 조회</button>
