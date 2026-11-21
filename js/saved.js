@@ -5,6 +5,7 @@ import * as db from "./db.js";
 import { esc, biggestChunk, chunkSentence, metricList } from "./explain.js";
 import { renderTable } from "./ask.js";
 import { getSchema } from "./api.js";
+import { won, wonDelta, withUnit, signedUnit } from "./format.js";
 
 const $ = (id) => document.getElementById(id);
 
@@ -18,7 +19,7 @@ const REPORT_META = {
 const titleOf = (q) => REPORT_META[q.id]?.title || q.question;
 
 let questions = [];
-let selected = null;
+let selected = null; // 상세가 펼쳐진 리포트 id (null = 모두 접힘)
 let ready = false;
 /** id → {status: idle|running|done|error, at, res, drill, drillError, error, stamp, sources, uploaded} */
 const state = new Map();
@@ -73,7 +74,8 @@ function renderList() {
       <td data-label="결과 상태">${statusCell(q)}</td>
       <td class="actions">
         <button type="button" class="btn small rerun" data-id="${esc(q.id)}" ${ready && s?.status !== "running" ? "" : "disabled"}>조회</button>
-        <button type="button" class="btn small link show" data-id="${esc(q.id)}" ${canDetail ? "" : "disabled"}>상세 보기</button>
+        <button type="button" class="btn small link show" data-id="${esc(q.id)}" aria-expanded="${selected === q.id}" aria-controls="report-detail"
+          ${canDetail ? "" : 'disabled title="먼저 조회하세요"'}>상세 보기</button>
       </td>
     </tr>`;
   }).join("");
@@ -101,7 +103,8 @@ function rowsByMonth(id) {
   return { s, map: new Map(s.res.rows.map((r) => [r["월"], r])), last: s.res.rows[s.res.rows.length - 1] };
 }
 
-function kpiItem({ label, title, id, month, col, unit, digits = 0, scale = 1 }) {
+/** KPI 한 칸. money=true 면 원 단위 값을 '약 26.76억 원' · '+4,193만 원'으로 보여 준다(값 자체는 SQL 결과 그대로). */
+function kpiItem({ label, title, id, month, col, unit, digits = 0, money = false }) {
   const q = questions.find((x) => x.id === id);
   const data = q && rowsByMonth(id);
   const row = data && (month ? data.map.get(month) : data.last);
@@ -111,13 +114,15 @@ function kpiItem({ label, title, id, month, col, unit, digits = 0, scale = 1 }) 
   }
   const m = row["월"];
   const prev = data.map.get(prevMonth(m));
-  const val = row[col] / scale;
-  const delta = prev && typeof prev[col] === "number" ? ` · 전월 대비 ${signed(val - prev[col] / scale, digits)}` : "";
+  const val = row[col];
+  const d = prev && typeof prev[col] === "number" ? val - prev[col] : null;
+  const delta = d === null ? "" : ` · 전월 대비 ${money ? wonDelta(d) : signedUnit(d, unit, digits)}`;
   const stale = isStale(q, data.s);
-  const sub = stale ? `${m} · 데이터 변경 · 재조회 필요` : `${m}${delta}${data.s.uploaded ? " · 업로드 데이터" : ""}`;
+  const sub = stale ? `기준월 ${m} · 데이터 변경 · 재조회 필요` : `기준월 ${m}${delta}${data.s.uploaded ? " · 업로드 데이터" : ""}`;
+  const valueHtml = money ? esc(won(val)) : `${n(val, digits)}<small>${esc(unit)}</small>`;
   return `<div class="kpi-item${stale ? " stale" : ""}" title="${esc(title)}">
     <div class="kpi-label">${esc(label)}</div>
-    <div class="kpi-value">${n(val, digits)}<small>${esc(unit)}</small></div>
+    <div class="kpi-value">${valueHtml}</div>
     <div class="kpi-sub">${esc(sub)}</div></div>`;
 }
 
@@ -129,7 +134,7 @@ async function renderKpi() {
   const baseMonth = hc?.last?.["월"];
   $("kpi").innerHTML = [
     kpiItem({ label: "월 인원", title: `월 인원: ${def("월 인원")}`, id: "monthly-headcount-cost", col: "인원", unit: "명" }),
-    kpiItem({ label: "월 인건비", title: `인건비: ${def("인건비")}`, id: "monthly-headcount-cost", col: "인건비", unit: "백만원", digits: 1, scale: 1e6 }),
+    kpiItem({ label: "월 인건비 (급여 지급액)", title: `인건비: ${def("인건비")} — payroll 지급액 기준이며 회사 부담 보험료 · 퇴직급여는 포함하지 않습니다`, id: "monthly-headcount-cost", col: "인건비", money: true }),
     kpiItem({ label: "월 퇴사자 수", title: `퇴사자 수: ${def("퇴사자 수")}`, id: "monthly-leavers", month: baseMonth, col: "퇴사자수", unit: "명" }),
     kpiItem({ label: "1인당 초과근로시간", title: `1인당 초과근로: ${def("1인당 초과근로")}`, id: "monthly-overtime", col: "일인당_초과근로", unit: "시간", digits: 2 }),
   ].join("");
@@ -186,29 +191,27 @@ async function renderDetail() {
       <h3 class="sec">조회 결과</h3>
       ${renderTable(s.res, 500, { tall: true })}
 
-      <section class="block">
-        <h3 class="sec">계산 기준 및 해석</h3>
+      <details class="fold"><summary>계산 기준 및 해석</summary><div class="fold-body">
         <table class="kv"><tbody>
           <tr><th>사용 데이터</th><td>${src}</td></tr>
           <tr><th>조회 조건</th><td>${esc(q.filters.join(" · "))}</td></tr>
           <tr><th>지표 정의</th><td>${metricList(q.metrics_used, schema)}</td></tr>
           ${drillHtml}
         </tbody></table>
-      </section>
+      </div></details>
 
-      <section class="block">
-        <h3 class="sec">검증 정보</h3>
+      <details class="fold"><summary>검증 정보</summary><div class="fold-body">
         <table class="kv"><tbody>
           <tr><th>이번 조회</th><td>${verdict}</td></tr>
           <tr><th>검증일</th><td>${esc(v.date || "—")}</td></tr>
           <tr><th>검증 기록</th><td>${esc(v.text || "—")}</td></tr>
         </tbody></table>
-      </section>
+      </div></details>
 
-      <details class="sql"><summary>SQL 보기</summary>
-        <pre>${esc(q.sql)}</pre>
-        ${q.drill ? `<p class="note">원인 분석 SQL — ${esc(q.drill.title)}</p><pre>${esc(q.drill.sql)}</pre>` : ""}
-      </details>
+      <details class="fold sql-fold"><summary>SQL 보기</summary><div class="fold-body">
+        <pre class="code">${esc(q.sql)}</pre>
+        ${q.drill ? `<p class="note">원인 분석 SQL — ${esc(q.drill.title)}</p><pre class="code">${esc(q.drill.sql)}</pre>` : ""}
+      </div></details>
     </section>`;
 }
 
@@ -263,9 +266,10 @@ export async function setup() {
     const q = questions.find((x) => x.id === btn.dataset.id);
     if (btn.classList.contains("rerun")) rerun(q);
     else if (btn.classList.contains("show")) {
-      selected = q.id;
+      // 같은 리포트면 접고, 다른 리포트면 그것만 펼친다. 저장된 결과로만 그리며 SQL은 다시 실행하지 않는다.
+      selected = selected === q.id ? null : q.id;
       renderAll();
-      $("report-detail").scrollIntoView({ behavior: "smooth", block: "start" });
+      if (selected) $("report-detail").scrollIntoView({ behavior: "smooth", block: "start" });
     }
   });
   $("run-all").addEventListener("click", runAll);

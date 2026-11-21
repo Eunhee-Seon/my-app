@@ -9,6 +9,10 @@ import { criterion, calcRules } from "./store.js";
 import { detect, missingTables } from "./detect.js";
 import { showTab, onTab } from "./nav.js";
 import { openReviewWith } from "./review.js";
+import { won, wonDelta, signedUnit } from "./format.js";
+import { isPayUnlocked, payLockPanel } from "./paylock.js";
+
+let lastRender = null; // 잠금 해제 · 잠금 때 SQL 재실행 없이 다시 그리기 위해 보관
 
 const $ = (id) => document.getElementById(id);
 let months = [];
@@ -70,7 +74,8 @@ async function compute() {
     for (const [k, s] of Object.entries(S)) R[k] = await db.run(s);
     let det = null, detErr = null;
     try { det = await detect(); } catch (e) { detErr = e.message; }
-    render(R, S, { calc, otC, atC, from, det, detErr });
+    lastRender = [R, S, { calc, otC, atC, from, det, detErr }];
+    render(...lastRender);
     lastKey = dataKey();
   } catch (e) {
     box.innerHTML = `<p class="msg error">계산 오류: ${esc(e.message)}</p>`;
@@ -81,6 +86,8 @@ async function compute() {
 
 function render(R, S, { calc, otC, atC, from, det, detErr }) {
   const hc = rowOf(R.hc, base), hl = rowOf(R.hl, base), ot = rowOf(R.ot, base), pay = rowOf(R.pay, base);
+  const prevPay = rowOf(R.pay, M.addMonths(base, -1));
+  const prevOt = rowOf(R.ot, M.addMonths(base, -1)), prevHc = rowOf(R.hc, M.addMonths(base, -1));
   const attrAll = R.attr.rows.find((r) => r["월"] === base && r["부서"] === "전체");
   const attrDept = { columns: R.attr.columns.filter((c) => c.name !== "월"), rows: R.attr.rows.filter((r) => r["월"] === base && r["부서"] !== "전체").map(({ 월, ...x }) => x).sort((a, b) => (b.퇴사율_pct ?? -1) - (a.퇴사율_pct ?? -1)) };
   const isLatest = base === months[months.length - 1];
@@ -116,13 +123,13 @@ function render(R, S, { calc, otC, atC, from, det, detErr }) {
 
     <h2 class="sec-title">인력 <span class="sub">기준일 ${esc(hc?.["기준일"] || M.monthEnd(base))} · ${esc(leaveRule)}</span></h2>
     <div class="kpi">
-      ${kpi("월말 재직 인원", n0(hc?.["월말_재직인원"]), "명", base)}
-      ${kpi("당월 입사자", n0(hl?.["입사자"]), "명", base)}
-      ${kpi("당월 퇴사자", n0(hl?.["퇴사자"]), "명", base)}
+      ${kpi("월말 재직 인원", n0(hc?.["월말_재직인원"]), "명", `기준월 ${base}${hc && prevHc ? ` · 전월 대비 ${signedUnit(hc["월말_재직인원"] - prevHc["월말_재직인원"], "명")}` : ""}`)}
+      ${kpi("당월 입사자", n0(hl?.["입사자"]), "명", `기준월 ${base}`)}
+      ${kpi("당월 퇴사자", n0(hl?.["퇴사자"]), "명", `기준월 ${base}`)}
       ${kpi("12개월 퇴사율 (전사)", attrAll ? n0(attrAll.퇴사율_pct, 1) : "—", "%", attrAll ? `${attrAll.퇴사자_12개월}명 ÷ 평균 ${n0(attrAll.평균_월말재직, 1)}명` : "12개월 데이터 부족")}
     </div>
     <div class="viz-grid">
-      ${viz("c-hc", "월말 재직 인원", leaveRule, R.hc, S.hc)}
+      ${viz("c-hc", "월말 재직 인원", leaveRule, R.hc, S.hc, "변화가 보이도록 Y축을 0이 아닌 값에서 시작합니다. 작은 변화도 기울기가 크게 보일 수 있으니 축의 값을 함께 확인하세요.")}
       ${viz("c-hl", "월별 입사 · 퇴사", "입사일 · 퇴사일 기준", R.hl, S.hl)}
       ${viz("c-dh", "부서별 재직 인원", `${base} 말 기준`, R.dh, S.dh, deptNote)}
       ${viz("c-lr", "퇴사 사유", `${from} ~ ${base} (${nMonths}개월)`, R.lr, S.lr)}
@@ -135,9 +142,9 @@ function render(R, S, { calc, otC, atC, from, det, detErr }) {
 
     <h2 class="sec-title">근태 <span class="sub">attendance 직원·월 집계 · 근무 기록이 없는 날은 결근으로 보지 않습니다</span></h2>
     <div class="kpi">
-      ${kpi("1인당 초과근로", n0(ot?.["일인당_초과근로"], 2), "시간", `${base} · 근태 인원 ${n0(ot?.["근태_인원"])}명`, "그 달 overtime_hours 합 ÷ 그 달 attendance 에 나온 사번 수")}
-      ${kpi(`기준(${otC.params.value}시간) 초과 인원`, n0(ot?.["기준초과_인원"]), "명", "시범 기준 · 법정 한도 아님")}
-      ${kpi("초과근로 합계", n0(ot?.["초과근로_합"], 1), "시간", base)}
+      ${kpi("1인당 초과근로", n0(ot?.["일인당_초과근로"], 2), "시간", `기준월 ${base}${ot && prevOt ? ` · 전월 대비 ${signedUnit(ot["일인당_초과근로"] - prevOt["일인당_초과근로"], "시간", 2)}` : ""}`, "그 달 overtime_hours 합 ÷ 그 달 attendance 에 나온 사번 수")}
+      ${kpi(`기준(${otC.params.value}시간) 초과 인원`, n0(ot?.["기준초과_인원"]), "명", `기준월 ${base} · 시범 기준, 법정 한도 아님`)}
+      ${kpi("초과근로 합계", n0(ot?.["초과근로_합"], 1), "시간", `기준월 ${base} · 근태 인원 ${n0(ot?.["근태_인원"])}명`)}
       ${kpi("근무시간 중앙값", n0(R.wh.rows[0]?.["총근무_중앙값"], 1), "시간", "정규 + 초과, 직원·월")}
     </div>
     <div class="viz-grid">
@@ -149,11 +156,12 @@ function render(R, S, { calc, otC, atC, from, det, detErr }) {
     <h3 class="sec">직원별 월 근무시간 분포 <span class="sub">${esc(base)} · 정규 + 초과 (시간)</span></h3>
     ${renderTable(R.wh, 5)}
 
-    <h2 class="sec-title">인건비 <span class="sub">payroll.amount 합계 · 회사 부담 보험료 · 퇴직급여 등 파일에 없는 비용은 포함하지 않습니다</span></h2>
+    <h2 class="sec-title">급여 지급액 <span class="sub">payroll.amount 합계(급여 지급액) · 회사 부담 보험료 · 퇴직급여 등 파일에 없는 비용은 포함하지 않으므로 회사 전체 인건비와 다릅니다</span></h2>
+    ${isPayUnlocked() ? `
     <div class="kpi">
-      ${kpi("월 급여 지급액", pay ? n0(pay["지급액"] / 1e6, 1) : "—", "백만원", base)}
-      ${kpi("전월 대비", pay ? signedPct(pay["전월대비_pct"]) : "—", "", base)}
-      ${kpi("1인당 평균 지급액", pay ? n0(pay["일인당_평균"] / 1e4, 0) : "—", "만원", `지급 인원 ${n0(pay?.["지급_인원"])}명`)}
+      ${kpi("월 급여 지급액", pay ? esc(won(pay["지급액"])) : "—", "", `기준월 ${base}`)}
+      ${kpi("전월 대비", pay && prevPay ? esc(wonDelta(pay["지급액"] - prevPay["지급액"])) : "—", "", pay ? `${signedPct(pay["전월대비_pct"])} · 기준월 ${base}` : "")}
+      ${kpi("1인당 평균 지급액", pay ? esc(won(pay["일인당_평균"])) : "—", "", `지급 인원 ${n0(pay?.["지급_인원"])}명`)}
       ${kpi("급여 항목 수", n0(R.pit.rows.length), "개", R.pit.rows.map((r) => r["급여항목"]).join(" · "))}
     </div>
     <div class="viz-grid">
@@ -164,7 +172,7 @@ function render(R, S, { calc, otC, atC, from, det, detErr }) {
       ${viz("c-dpay", "부서별 급여 지급액", `${base}`, R.dpay, S.dpay, deptNote)}
     </div>
     <h3 class="sec">급여 항목별 월 지급액</h3>
-    ${renderTable(R.pitT, 60)}
+    ${renderTable(R.pitT, 60)}` : payLockPanel("급여 지급액 상세")}
 
     <h2 class="sec-title">데이터 연결 검증 <span class="sub">직원·월로 먼저 집계한 뒤 연결 — 연결 전후 행 수가 같아야 합니다</span></h2>
     ${renderTable(R.jc, 10)}
@@ -172,7 +180,7 @@ function render(R, S, { calc, otC, atC, from, det, detErr }) {
   `;
 
   const L = (res) => col(res, "월");
-  chart($("c-hc"), { type: "line", title: "월말 재직 인원", labels: L(R.hc), series: [{ name: "월말 재직 인원", values: col(R.hc, "월말_재직인원"), color: COLORS.primary }], unit: "명", highlightIndex: L(R.hc).indexOf(base) });
+  chart($("c-hc"), { type: "line", title: "월말 재직 인원", labels: L(R.hc), series: [{ name: "월말 재직 인원", values: col(R.hc, "월말_재직인원"), color: COLORS.primary }], unit: "명", zeroBase: false, highlightIndex: L(R.hc).indexOf(base) });
   chart($("c-hl"), { type: "bar", title: "월별 입사 · 퇴사", labels: L(R.hl), series: [{ name: "입사자", values: col(R.hl, "입사자"), color: COLORS.primary }, { name: "퇴사자", values: col(R.hl, "퇴사자"), color: COLORS.secondary }], unit: "명" });
   chart($("c-dh"), { type: "hbar", title: "부서별 재직 인원", labels: col(R.dh, "부서"), values: col(R.dh, "재직인원"), unit: "명" });
   chart($("c-lr"), { type: "hbar", title: "퇴사 사유", labels: col(R.lr, "퇴사사유"), values: col(R.lr, "퇴사자"), unit: "명" });
@@ -182,11 +190,11 @@ function render(R, S, { calc, otC, atC, from, det, detErr }) {
   chart($("c-over"), { type: "bar", title: "기준 초과 인원 추이", labels: L(R.ot), series: [{ name: "기준 초과 인원", values: col(R.ot, "기준초과_인원"), color: COLORS.primary }], unit: "명", highlightIndex: L(R.ot).indexOf(base) });
   chart($("c-dot"), { type: "hbar", title: "부서별 1인당 초과근로", labels: col(R.dot, "부서"), values: col(R.dot, "일인당_초과근로"), unit: "시간" });
   chart($("c-hist"), { type: "bar", title: "직원별 초과근로 분포", labels: R.hist.rows.map((r) => `${r["구간_시작"]}~${r["구간_시작"] + 5}`), series: [{ name: "인원", values: col(R.hist, "인원"), color: COLORS.primary }], unit: "명" });
-  chart($("c-pay"), { type: "bar", title: "월별 급여 지급액", labels: L(R.pay), series: [{ name: "지급액", values: col(R.pay, "지급액"), color: COLORS.primary }], valueFmt: (v) => `${n0(v / 1e6, 1)}백만원`, highlightIndex: L(R.pay).indexOf(base) });
+  chart($("c-pay"), { type: "bar", title: "월별 급여 지급액", labels: L(R.pay), series: [{ name: "지급액", values: col(R.pay, "지급액"), color: COLORS.primary }], valueFmt: (v) => won(v), yUnit: "원", highlightIndex: L(R.pay).indexOf(base) });
   chart($("c-paychg"), { type: "bar", title: "월별 지급액 증감률", labels: L(R.pay), series: [{ name: "전월 대비", values: col(R.pay, "전월대비_pct"), color: COLORS.primary }], unit: "%" });
   chart($("c-pit"), { type: "hbar", title: "급여 항목별 구성", labels: col(R.pit, "급여항목"), values: col(R.pit, "비중_pct"), unit: "%" });
-  chart($("c-pcap"), { type: "line", title: "월별 1인당 평균 지급액", labels: L(R.pay), series: [{ name: "1인당 평균", values: col(R.pay, "일인당_평균"), color: COLORS.primary }], valueFmt: (v) => `${n0(v / 1e4, 0)}만원` });
-  chart($("c-dpay"), { type: "hbar", title: "부서별 급여 지급액", labels: col(R.dpay, "부서"), values: col(R.dpay, "지급액"), valueFmt: (v) => `${n0(v / 1e6, 1)}백만원` });
+  chart($("c-pcap"), { type: "line", title: "월별 1인당 평균 지급액", labels: L(R.pay), series: [{ name: "1인당 평균", values: col(R.pay, "일인당_평균"), color: COLORS.primary }], valueFmt: (v) => won(v), yUnit: "원" });
+  chart($("c-dpay"), { type: "hbar", title: "부서별 급여 지급액", labels: col(R.dpay, "부서"), values: col(R.dpay, "지급액"), valueFmt: (v) => won(v, { approx: false }) });
 
   $("ops-body").querySelectorAll(".go-review").forEach((b) => b.addEventListener("click", () => {
     openReviewWith({ ym: base, rule: b.dataset.rule });
@@ -197,6 +205,9 @@ function render(R, S, { calc, otC, atC, from, det, detErr }) {
 function markStale() {
   if (lastKey && lastKey !== dataKey()) $("ops-stale").hidden = false;
 }
+
+// 급여 잠금이 바뀌면 이미 계산한 결과로 다시 그린다(SQL 재실행 없음)
+window.addEventListener("paylock-changed", () => { if (lastRender && !busy) render(...lastRender); });
 
 export function setup() {
   $("ops-month").addEventListener("change", (e) => { base = e.target.value; compute(); });

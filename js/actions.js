@@ -111,7 +111,7 @@ async function renderFollow() {
   const box = $("act-body");
   box.innerHTML = '<p class="msg">불러오는 중…</p>';
   const det = await ensureDetect();
-  const recs = Object.values(getActions()).filter((r) => ["조치 완료", "종결"].includes(r.status) || r.followupDate);
+  const recs = Object.values(getActions()).filter((r) => r.status === "종결" || r.doneDate || r.followupDate);
   let workdays = new Map();
   try { workdays = new Map((await db.run(M.sqlWorkdays())).rows.map((r) => [r["월"], r["근무일수"]])); } catch { /* 없음 */ }
   const rows = [];
@@ -131,7 +131,7 @@ async function renderFollow() {
     <p class="note">조치 후 지표: 후속 점검일이 있으면 그 달, 없으면 대상 기간의 다음 달 값입니다. 데이터 품질 항목은 현재 데이터에서 같은 문제가 다시 발견되는지 재검증합니다.</p>
     ${rows.length ? `<div class="table-scroll tall"><table class="grid">
       <thead><tr><th>직원 ID / 조직</th><th>탐지 유형</th><th class="num">조치 전 지표</th><th class="num">조치 후 지표</th><th class="num">변화량</th><th>후속 점검일</th><th>재발 여부</th><th>HR 담당자 평가</th><th>상태</th><th>참고 (다른 원인)</th><th></th></tr></thead>
-      <tbody>${rows.join("")}</tbody></table></div>` : '<p class="empty">후속 점검 대상이 없습니다. 조치 완료 · 종결이거나 후속 점검일이 있는 기록이 여기에 나타납니다.</p>'}`;
+      <tbody>${rows.join("")}</tbody></table></div>` : '<p class="empty">후속 점검 대상이 없습니다. 종결했거나 완료일 · 후속 점검일이 있는 기록이 여기에 나타납니다.</p>'}`;
   box.querySelectorAll(".go-item").forEach((b) => b.addEventListener("click", () => goItem(b.dataset.id)));
 }
 

@@ -3,6 +3,7 @@
 import * as db from "./db.js";
 import { esc } from "./explain.js";
 import { renderTable } from "./ask.js";
+import { isPayUnlocked, payLockPanel } from "./paylock.js";
 
 const $ = (id) => document.getElementById(id);
 let schema = { tables: [], relationships: [] };
@@ -89,6 +90,12 @@ export async function setup() {
     const pv = e.target.closest(".preview-btn");
     if (pv) {
       const box = pv.nextElementSibling;
+      if (pv.dataset.table === "payroll" && !isPayUnlocked()) {
+        box.innerHTML = payLockPanel("직원별 급여 금액 미리보기");
+        box.dataset.locked = "1";
+        return;
+      }
+      delete box.dataset.locked;
       pv.disabled = true;
       try {
         const res = await db.run(`SELECT * FROM ${db.quoteIdent(pv.dataset.table)} LIMIT 20`);
@@ -99,5 +106,14 @@ export async function setup() {
     }
   });
   window.addEventListener("tables-changed", render);
+  // 잠금을 풀면 잠금 안내가 떠 있던 미리보기를 바로 보여 주고, 다시 잠그면 급여 미리보기를 닫는다
+  window.addEventListener("paylock-changed", () => {
+    document.querySelectorAll("#table-list .preview").forEach((box) => {
+      const btn = box.previousElementSibling;
+      if (btn?.dataset.table !== "payroll") return;
+      if (isPayUnlocked() && box.dataset.locked) btn.click();
+      else if (!isPayUnlocked()) { box.innerHTML = ""; btn.disabled = false; }
+    });
+  });
   render();
 }

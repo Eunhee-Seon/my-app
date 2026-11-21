@@ -2,6 +2,7 @@
 import * as db from "./db.js";
 import { esc } from "./explain.js";
 import { renderTable } from "./ask.js";
+import { isPayUnlocked, payLockPanel } from "./paylock.js";
 
 const SHEETJS_URL = "https://cdn.sheetjs.com/xlsx-0.20.3/package/xlsx.mjs";
 const $ = (id) => document.getElementById(id);
@@ -93,10 +94,16 @@ async function handleFile(file) {
     const pv = document.createElement("tr");
     pv.className = "detail-row";
     pv.hidden = true;
-    pv.innerHTML = `<td colspan="8">
-      <p class="cols-head">컬럼 ${r.columns.length}개 · 처음 20행</p>
-      <p class="note">${r.columns.map((c) => `${esc(c.name)} (${esc(c.type)})`).join(", ")}</p>
-      ${renderTable(preview, 20)}</td>`;
+    // payroll 은 직원별 급여 금액이 보이므로 시연용 잠금을 건다
+    const isPay = table === "payroll";
+    const paintPv = () => {
+      pv.innerHTML = `<td colspan="8">
+        <p class="cols-head">컬럼 ${r.columns.length}개 · 처음 20행</p>
+        <p class="note">${r.columns.map((c) => `${esc(c.name)} (${esc(c.type)})`).join(", ")}</p>
+        ${isPay && !isPayUnlocked() ? payLockPanel("직원별 급여 금액 미리보기") : renderTable(preview, 20)}</td>`;
+    };
+    paintPv();
+    if (isPay) window.addEventListener("paylock-changed", paintPv);
     card.after(pv);
     card.querySelector(".pv-toggle").addEventListener("click", (e) => {
       pv.hidden = !pv.hidden;

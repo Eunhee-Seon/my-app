@@ -18,6 +18,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; } /* display 를 지정한 요소도 hidden 이면 숨긴다 */
 
 html { -webkit-text-size-adjust: 100%; }
 body {
@@ -322,7 +323,7 @@ table.grid td.mono, .mono { font: 12px var(--mono); }
 .subnav { display: flex; gap: 0; border-bottom: 1px solid var(--line); margin: 0 0 14px; overflow-x: auto; }
 .subnav button { padding: 7px 12px; border: 0; border-bottom: 2px solid transparent; background: none; font: inherit; font-size: 13px; color: var(--muted); cursor: pointer; white-space: nowrap; }
 .subnav button[aria-selected="true"] { color: var(--text-strong); font-weight: 700; border-bottom-color: var(--text); }
-.status-kpi { grid-template-columns: repeat(6, minmax(0, 1fr)); margin-bottom: 4px; }
+.status-kpi { grid-template-columns: repeat(4, minmax(0, 1fr)); margin-bottom: 4px; }
 .procedure { margin: 0 0 12px; }
 .procedure ol { margin: 4px 0 0; padding-left: 20px; }
 .procedure .sub { font-weight: 400; color: var(--muted); font-size: 12px; }
@@ -337,17 +338,117 @@ table.grid td.mono, .mono { font: 12px var(--mono); }
 .form-foot { display: flex; gap: 10px; align-items: center; }
 label.btn { cursor: pointer; }
 
+/* ── 부드러운 업무용 UI 다듬기 (색 · 모서리 · 여백 · 글자 크기) ── */
+:root {
+  --text: #222222;
+  --text-strong: #111111;
+  --muted: #667085;
+  --subtle: #f8f9fa;
+  --line: #e5e7eb;
+  --r-ctl: 7px;
+  --r-box: 10px;
+}
+body { font-size: 14.5px; }
+main { padding: 26px 28px 80px; }
+.page-head { margin-bottom: 16px; }
+.page-head h1 { font-size: 20px; }
+.desc { margin-bottom: 18px; }
+.note { font-size: 13px; line-height: 1.55; }
+.sec-title { margin: 36px 0 12px; font-size: 16px; }
+.block { margin-top: 28px; padding-top: 20px; }
+
+.btn { min-height: 36px; padding: 7px 16px; border-radius: var(--r-ctl); }
+.btn.small { min-height: 30px; padding: 4px 12px; border-radius: 6px; font-size: 13px; }
+.btn.link { border-radius: 6px; }
+input[type="text"], input[type="password"], input[type="date"], input[type="number"], select {
+  min-height: 36px;
+  border-radius: var(--r-ctl);
+}
+input[type="password"] { flex: 1; min-width: 0; padding: 6px 10px; border: 1px solid var(--line-strong); font: inherit; }
+textarea { border-radius: var(--r-ctl); }
+.act-form input[type="text"], .act-form input[type="date"], .act-form input[type="number"], .filters input[type="text"] { min-height: 36px; border-radius: var(--r-ctl); }
+.tag { border-radius: 4px; }
+
+/* 표: 외곽은 둥글게, 내부선은 얇게, 본문 글자는 14px */
+.table-scroll { border-radius: var(--r-box); }
+table.data, table.grid { font-size: 14px; }
+table.data th, table.grid th { font-size: 13px; color: #344054; }
+table.data th, table.data td, table.grid th, table.grid td { padding: 9px 12px; }
+table.kv { font-size: 14px; }
+table.kv th, table.kv td { padding: 8px 10px; }
+
+/* 섹션 컨테이너 */
+.kpi { border: 1px solid var(--line); border-radius: var(--r-box); }
+.kpi-item { padding: 14px 18px; }
+.kpi-item:first-child { padding-left: 18px; }
+.kpi-label { font-size: 13px; }
+.kpi-sub { font-size: 12.5px; }
+.viz-grid { gap: 16px; margin-top: 12px; }
+.viz { border: 1px solid var(--line); border-radius: var(--r-box); padding: 16px 18px 12px; }
+.alert, .notice, .stale-bar { border-radius: 8px; }
+.drop { border-radius: var(--r-box); }
+.detail-head { border-bottom: 1px solid var(--line-strong); }
+details.sql pre, pre.code { border-radius: 8px; }
+.finding { border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; }
+
+/* 접히는 영역(계산 기준 · 검증 정보 · SQL) */
+details.fold { margin-top: 12px; border: 1px solid var(--line); border-radius: var(--r-box); background: var(--surface); }
+details.fold > summary { cursor: pointer; padding: 11px 16px; font-weight: 600; color: var(--text-strong); list-style: none; }
+details.fold > summary::-webkit-details-marker { display: none; }
+details.fold > summary::before { content: "▸"; display: inline-block; width: 16px; color: var(--muted); }
+details.fold[open] > summary::before { content: "▾"; }
+details.fold > .fold-body { padding: 0 16px 14px; }
+details.fold > .fold-body > table.kv { border-top: 1px solid var(--line); }
+
+/* HR 모니터링 보조 메뉴 */
+.subpanel { margin-top: 4px; }
+.sub-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin: 4px 0 10px; }
+.sub-head h2 { margin: 0; font-size: 17px; font-weight: 700; color: var(--text-strong); }
+#monitor-subnav { margin-bottom: 18px; }
+#monitor-subnav button { padding: 9px 16px; font-size: 14px; }
+#monitor-subnav button[aria-selected="true"] { border-bottom-color: var(--red); }
+.subnav.minor button[aria-selected="true"] { border-bottom-color: var(--text); }
+
+/* 정기 리포트: 상세 보기 버튼의 펼침 상태 */
+.btn.link[aria-expanded="true"] { color: var(--red-dark); font-weight: 700; }
+
+/* 검토 항목 목록: 7개 열, 가로 스크롤 없이 */
+table.review-list { table-layout: fixed; }
+table.review-list th, table.review-list td { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+table.review-list col.c-target { width: 15%; } table.review-list col.c-dept { width: 12%; }
+table.review-list col.c-type { width: 21%; } table.review-list col.c-ym { width: 11%; }
+table.review-list col.c-actual { width: 15%; } table.review-list col.c-diff { width: 15%; } table.review-list col.c-status { width: 11%; }
+table.review-list tbody tr.row { cursor: pointer; }
+table.review-list tbody tr.row:focus-visible { outline: 2px solid var(--red); outline-offset: -2px; }
+table.review-list tr.row.open td { background: var(--red-tint); }
+table.review-list td.target { font-weight: 700; color: var(--text-strong); font-variant-numeric: tabular-nums; }
+table.review-list td.target::before { content: "▸"; display: inline-block; width: 14px; color: var(--muted); font-weight: 400; }
+table.review-list tr.row.open td.target::before { content: "▾"; }
+table.review-list td.type { color: var(--text); }
+table.review-list tr.detail-row > td { white-space: normal; overflow: visible; padding: 4px 18px 20px; background: var(--surface); }
+table.review-list tr.detail-row:hover > td { background: var(--surface) !important; }
+.st { font-weight: 600; }
+.st-미확인 { color: var(--muted); font-weight: 500; }
+.st-확인중 { color: var(--warn); }
+.st-조치중 { color: #1d4ed8; }
+.st-종결 { color: var(--ok); }
+
+/* 급여 잠금 */
+form.paylock { padding: 16px 18px; border: 1px dashed var(--line-strong); border-radius: var(--r-box); background: var(--subtle); }
+form.paylock p { margin: 0 0 8px; }
+form.paylock .input-row { max-width: 420px; }
+
 /* ── 좁은 화면 ────────────────────────── */
 @media (max-width: 960px) {
   .viz-grid { grid-template-columns: minmax(0, 1fr); }
-  .status-kpi { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .status-kpi .kpi-item:nth-child(4) { border-left: 0; padding-left: 0; }
-  .status-kpi .kpi-item:nth-child(n+4) { border-top: 1px solid var(--line); }
+  .status-kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .status-kpi .kpi-item:nth-child(3) { border-left: 0; padding-left: 18px; }
+  .status-kpi .kpi-item:nth-child(n+3) { border-top: 1px solid var(--line); }
   .act-form { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 @media (max-width: 860px) {
   .kpi { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .kpi-item:nth-child(3) { border-left: 0; padding-left: 0; }
+  .kpi-item:nth-child(3) { border-left: 0; padding-left: 18px; }
   .kpi-item:nth-child(n+3) { border-top: 1px solid var(--line); }
 }
 
@@ -378,6 +479,18 @@ label.btn { cursor: pointer; }
   .input-row .btn { flex: 1; }
   .act-form { grid-template-columns: minmax(0, 1fr); }
   table.grid td.reason { min-width: 150px; }
+  main { padding: 18px 16px 56px; }
+  .kpi-item:first-child, .kpi-item:nth-child(3) { padding-left: 12px; }
+  .kpi-item { padding: 12px; }
+  .viz { padding: 12px; }
+  /* 검토 항목 목록은 행마다 세로로 쌓는다 */
+  table.review-list { table-layout: auto; }
+  table.review-list colgroup, table.review-list thead { display: none; }
+  table.review-list, table.review-list tbody, table.review-list tr, table.review-list td { display: block; width: 100%; }
+  table.review-list tr.row { padding: 10px 12px; border-bottom: 1px solid var(--line); }
+  table.review-list tr.row td { padding: 1px 0; border: 0; white-space: normal; }
+  table.review-list tr.row td[data-label]::before { content: attr(data-label); display: inline-block; width: 84px; color: var(--muted); font-size: 12.5px; }
+  table.review-list tr.detail-row > td { padding: 4px 10px 16px; }
   .filters label { flex: 1 1 140px; }
   .filters input[type="text"], .filters select { width: 100%; }
   .head-tools { width: 100%; }

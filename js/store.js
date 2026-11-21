@@ -153,9 +153,24 @@ export function markSeen(items) {
 export const firstSeen = (id) => load(KEYS.seen, {})[id] || null;
 
 // ── 조치 기록 ─────────────────────────────────────────
-export const STATUSES = ["미확인", "확인 중", "조치 예정", "조치 중", "조치 완료", "종결"];
+export const STATUSES = ["미확인", "확인 중", "조치 중", "종결"];
+/** 이전 6단계 상태 → 4단계. 원래 값은 legacyStatus 에 남겨 데이터 손실이 없게 한다. */
+const LEGACY_STATUS = { "조치 예정": "조치 중", "조치 완료": "종결" };
 
-export const getActions = () => load(KEYS.actions, {});
+export function getActions() {
+  const all = load(KEYS.actions, {});
+  let changed = false;
+  for (const rec of Object.values(all)) {
+    const to = LEGACY_STATUS[rec.status];
+    if (!to) continue;
+    rec.legacyStatus = rec.status;
+    rec.log = [...(rec.log || []), { at: nowIso(), by: "시스템", status: to, changed: [`상태 자동 변환: ${rec.status} → ${to}`] }];
+    rec.status = to;
+    changed = true;
+  }
+  if (changed) save(KEYS.actions, all);
+  return all;
+}
 export const getAction = (itemId) => getActions()[itemId] || null;
 export const statusOf = (itemId) => getAction(itemId)?.status || "미확인";
 
@@ -172,21 +187,15 @@ export function saveAction(item, patch) {
     period: item.ym, actual: item.actual, threshold: item.threshold, diff: item.diff, unit: item.unit,
     firstDetected: prev?.firstDetected || firstSeen(item.id)?.date || today(),
     criterion: prev?.criterion || { id: item.criterionId, version: item.criterionVersion, params: item.criterionParams },
-    owner: "", cause: "", needAction: "미정", actionText: "", plannedDate: "", doneDate: "", followupDate: "",
+    owner: "", cause: "", needAction: "", actionText: "", plannedDate: "", doneDate: "", followupDate: "",
     status: "미확인", finalBasis: "", closeReason: "", evaluation: "", log: [],
     ...prev,
     ...patch,
   };
+  if (LEGACY_STATUS[rec.status]) rec.status = LEGACY_STATUS[rec.status];
   if (!STATUSES.includes(rec.status)) throw new Error("알 수 없는 상태입니다.");
-  if (rec.status !== "미확인" && !String(rec.owner).trim()) throw new Error("담당자를 입력하세요.");
-  if (rec.status === "조치 예정" && !rec.plannedDate) throw new Error("조치 예정일을 입력하세요.");
-  if (["조치 예정", "조치 중", "조치 완료"].includes(rec.status) && rec.needAction === "불필요")
-    throw new Error("조치 필요 여부가 '불필요'이면 사유를 적고 '종결'로 처리하세요.");
-  if (rec.status === "조치 완료" && (!String(rec.actionText).trim() || !rec.doneDate))
-    throw new Error("조치 완료에는 조치 내용과 완료일이 필요합니다.");
-  if (rec.status === "종결" && !String(rec.finalBasis).trim()) throw new Error("종결에는 최종 판단 근거가 필요합니다.");
-  if (rec.status === "종결" && rec.needAction === "불필요" && !String(rec.closeReason).trim())
-    throw new Error("조치 불필요로 종결할 때는 종결 사유를 선택하세요.");
+  // 종결 사유 · 확인한 원인 · 조치 내용 · 최종 판단 근거 · 조치 필요 여부는 모두 선택 입력이다.
+  if (rec.status !== "미확인" && !String(rec.owner).trim()) throw new Error("담당자를 입력하세요. (미확인 외 상태에서 필수)");
   const changes = Object.keys(patch).filter((k) => k !== "log" && String(prev?.[k] ?? "") !== String(patch[k] ?? ""));
   rec.log = [...(prev?.log || []), { at: nowIso(), by: rec.owner || "-", status: rec.status, changed: changes }];
   rec.updatedAt = nowIso();

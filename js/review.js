@@ -8,6 +8,7 @@ import { esc } from "./explain.js";
 import { detect, isStale, lastResult, missingTables } from "./detect.js";
 import { criterion, paramsText, STATUSES, getAction, statusOf, saveAction, firstSeen, storage, calcRules } from "./store.js";
 import { onTab } from "./nav.js";
+import { isPayUnlocked, payLockPanel } from "./paylock.js";
 
 const $ = (id) => document.getElementById(id);
 const PAGE = 50;
@@ -18,6 +19,11 @@ let selectedId = null;
 let items = [];
 
 const CATEGORIES = ["운영 기준 초과", "통계적 이상치", "데이터 품질"];
+/** 목록에 쓰는 짧은 검토 유형명 (전체 조건명 · 분류는 상세에 표시) */
+const SHORT = {
+  ot_over: "초과근로 기준 초과", ot_spike: "초과근로 전월 대비 급증", ot_consec: "초과근로 연속 증가", ot_dept_outlier: "부서 내 초과근로 편차",
+  dept_attrition: "부서 퇴사율 기준 초과", pay_change: "급여 지급액 급변", att_dq: "근태 데이터 품질", pay_dq: "급여 데이터 품질",
+};
 const OT_RULES = ["ot_over", "ot_spike", "ot_consec", "ot_dept_outlier"];
 
 const PROCEDURES = {
@@ -66,7 +72,8 @@ export function openItem(id) {
   selectedId = id;
   const it = items.find((x) => x.id === id);
   if (it) filter = { ym: it.ym, dept: "", category: "", rule: "", status: "", q: String(it.target) };
-  page = 0;
+  const idx = filtered().findIndex((x) => x.id === id);
+  page = idx > 0 ? Math.floor(idx / PAGE) : 0;
   if (items.length) renderAll();
 }
 
@@ -103,6 +110,7 @@ function renderAll() {
   const pages = Math.max(1, Math.ceil(list.length / PAGE));
   if (page >= pages) page = pages - 1;
   const slice = list.slice(page * PAGE, page * PAGE + PAGE);
+  if (selectedId && !slice.some((x) => x.id === selectedId)) selectedId = null; // 보이지 않는 항목의 상세는 접는다
 
   $("review-body").innerHTML = `
     <div class="filters">
@@ -122,23 +130,28 @@ function renderAll() {
     </dl>
     <p class="note">계산 ${res ? res.ranAt.toLocaleString("ko-KR") : "—"} · 한 직원이 여러 조건에 해당하면 항목이 여러 건입니다. 검토 항목은 확인할 근거이며 위반이나 문제로 판정한 것이 아닙니다.</p>
     ${list.length ? `
-    <div class="table-scroll tall"><table class="grid review-table">
-      <thead><tr><th>직원 ID / 대상</th><th>부서</th><th>검토 유형</th><th>검토 조건</th><th>대상 기간</th><th>기준값</th><th>실제값</th><th>기준 대비 차이</th><th>발견 사유</th><th>처리 상태</th><th></th></tr></thead>
-      <tbody>${slice.map((it) => `
-        <tr class="${it.id === selectedId ? "selected" : ""}">
-          <td class="name">${esc(it.target)}</td><td>${esc(it.dept || "—")}</td><td>${esc(it.category)}</td>
-          <td>${esc(it.ruleName)}${it.subtype ? ` <span class="tag">${esc(it.subtype)}</span>` : ""}${it.smallDept ? ' <span class="tag warn">소규모 부서</span>' : ""}</td>
-          <td>${esc(it.ym)}</td><td>${esc(it.thresholdText)}</td><td class="num">${esc(it.actualText)}</td><td class="num">${esc(it.diffText)}</td>
-          <td class="reason">${esc(it.reason)}</td><td>${statusTag(statusOf(it.id))}</td>
-          <td class="actions"><button type="button" class="btn small link open-item" data-id="${esc(it.id)}">상세 보기</button></td>
-        </tr>`).join("")}</tbody>
+    <div class="table-scroll auto"><table class="grid review-list">
+      <colgroup><col class="c-target"><col class="c-dept"><col class="c-type"><col class="c-ym"><col class="c-actual"><col class="c-diff"><col class="c-status"></colgroup>
+      <thead><tr><th>직원 ID / 대상</th><th>부서</th><th>검토 유형</th><th>대상 월</th><th class="num">실제값</th><th class="num">기준 대비 차이</th><th>처리 상태</th></tr></thead>
+      <tbody>${slice.map((it) => {
+        const open = it.id === selectedId;
+        return `
+        <tr class="row${open ? " open" : ""}" tabindex="0" data-id="${esc(it.id)}" aria-expanded="${open}" title="${esc(`${it.category} · ${it.ruleName}`)}">
+          <td class="target">${esc(it.target)}</td>
+          <td data-label="부서">${esc(it.dept || "—")}</td>
+          <td class="type" data-label="검토 유형">${esc(SHORT[it.rule] || it.ruleName)}</td>
+          <td data-label="대상 월">${esc(it.ym)}</td>
+          <td class="num" data-label="실제값">${esc(it.actualText)}</td>
+          <td class="num" data-label="기준 대비">${esc(it.diffText)}</td>
+          <td data-label="처리 상태">${statusTag(statusOf(it.id))}</td>
+        </tr>${open ? `<tr class="detail-row"><td colspan="7"><div id="review-detail"></div></td></tr>` : ""}`;
+      }).join("")}</tbody>
     </table></div>
     <div class="pager">
       <button type="button" class="btn small" id="pg-prev" ${page === 0 ? "disabled" : ""}>이전</button>
       <span>${page + 1} / ${pages} 쪽 · ${(page * PAGE + 1).toLocaleString()}–${Math.min(list.length, (page + 1) * PAGE).toLocaleString()} / ${list.length.toLocaleString()}건</span>
       <button type="button" class="btn small" id="pg-next" ${page >= pages - 1 ? "disabled" : ""}>다음</button>
-    </div>` : '<p class="empty">조건에 맞는 검토 항목이 없습니다.</p>'}
-    <div id="review-detail"></div>`;
+    </div>` : '<p class="empty">조건에 맞는 검토 항목이 없습니다.</p>'}`;
 
   const set = (k) => (e) => { filter[k] = e.target.value; page = 0; renderAll(); };
   $("f-ym").addEventListener("change", set("ym"));
@@ -149,21 +162,27 @@ function renderAll() {
   $("f-q").addEventListener("change", set("q"));
   $("pg-prev")?.addEventListener("click", () => { page--; renderAll(); });
   $("pg-next")?.addEventListener("click", () => { page++; renderAll(); });
-  $("review-body").querySelectorAll(".open-item").forEach((b) => b.addEventListener("click", () => {
-    selectedId = b.dataset.id;
+  // 행을 누르면 그 아래에 상세가 펼쳐지고, 같은 행을 다시 누르면 접힌다(한 번에 하나만)
+  const toggle = (id) => {
+    selectedId = selectedId === id ? null : id;
     renderAll();
-    $("review-detail").scrollIntoView({ behavior: "smooth", block: "start" });
-  }));
+    if (selectedId) document.querySelector("#review-body tr.row.open")?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  };
+  $("review-body").querySelectorAll("tr.row").forEach((tr) => {
+    tr.addEventListener("click", () => toggle(tr.dataset.id));
+    tr.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(tr.dataset.id); } });
+  });
   if (selectedId) renderDetail(items.find((x) => x.id === selectedId));
 }
 
+/** 처리 상태 표시: 배지 없이 글자색만 */
 export function statusTag(s) {
-  const cls = s === "미확인" ? "" : s === "종결" || s === "조치 완료" ? "ok" : "warn";
-  return `<span class="tag ${cls}">${esc(s)}</span>`;
+  return `<span class="st st-${esc(String(s).replace(/\s/g, ""))}">${esc(s)}</span>`;
 }
 
 // ── 상세 ──────────────────────────────────────────────
 let detailSeq = 0;
+let flash = { id: null, text: "" };
 async function renderDetail(it) {
   const seq = ++detailSeq; // 그리는 도중 다시 그려지면 앞선 작업은 버린다
   const box = $("review-detail");
@@ -175,8 +194,13 @@ async function renderDetail(it) {
   const seen = firstSeen(it.id);
   const parts = [];
   const charts = [];
+  const flags = [it.subtype ? `분류: ${it.subtype}` : "", it.smallDept ? `소규모 부서(${it.dept_n}명) — 평균 · 분포 비교의 해석에 주의` : ""].filter(Boolean);
+  parts.push(section("검토 조건 · 기준값 · 실제값 · 발견 사유", diffTable(it, c, seen) + (flags.length ? `<ul class="facts">${flags.map((f) => `<li>${esc(f)}</li>`).join("")}</ul>` : "")));
+  const payKind = it.rule === "pay_change" || it.rule === "pay_dq";
 
-  if (it.empId && kind === "ot") {
+  if (payKind && !isPayUnlocked()) {
+    parts.push(section("급여 관련 상세", payLockPanel("급여 관련 상세 정보")));
+  } else if (it.empId && kind === "ot") {
     const emp = await db.run(M.sqlEmployee(it.empId));
     const from = M.addMonths(it.ym, -5);
     const win = await db.run(M.sqlEmpOtWindow(it.empId, from, it.ym));
@@ -184,20 +208,19 @@ async function renderDetail(it) {
     const raw = await db.run(M.sqlEmpAttendanceRows(it.empId, it.ym));
     const d = dist.rows[0] || {};
     const related = items.filter((x) => x.empId === it.empId && x.ym >= from && x.ym <= it.ym && x.category !== "데이터 품질");
-    parts.push(section("1. 직원 ID와 기본 조직정보", kvTable(emp.rows[0] || {}), M.sqlEmployee(it.empId), "급여 금액은 이 화면에 표시하지 않습니다. 부서는 현재 기록 기준입니다."));
-    parts.push(section(`2. 최근 6개월 초과근로 추이 (${from} ~ ${it.ym})`, `<div class="chart-box" id="d-chart"></div><details class="sql"><summary>표로 보기</summary>${renderTable(win, 12)}</details>`, M.sqlEmpOtWindow(it.empId, from, it.ym), "근무기록일수가 다른 달과 크게 다르면(입사 · 퇴사 · 휴가) 월 합계를 그대로 비교하기 어렵습니다."));
+    parts.push(section(`최근 6개월 초과근로 추이 (${from} ~ ${it.ym})`, `<div class="chart-box" id="d-chart"></div><details class="sql"><summary>표로 보기</summary>${renderTable(win, 12)}</details>`, M.sqlEmpOtWindow(it.empId, from, it.ym), "근무기록일수가 다른 달과 크게 다르면(입사 · 퇴사 · 휴가) 월 합계를 그대로 비교하기 어렵습니다."));
     charts.push(() => chart($("d-chart"), {
       type: "line", title: "최근 6개월 초과근로", labels: win.rows.map((r) => r["월"]),
       series: [{ name: `${it.empId} (선택한 직원)`, values: win.rows.map((r) => r["본인_초과근로"]), color: COLORS.highlight },
                { name: "부서 평균", values: win.rows.map((r) => r["부서_평균"]), color: COLORS.compare, dashed: true }],
       unit: "시간", threshold: { value: criterion("ot_over").params.value, label: `시범 기준 ${criterion("ot_over").params.value}시간` },
     }));
-    parts.push(section(`3. 부서 평균 및 분포와 비교 (${it.ym})`, renderTable(dist, 1) +
+    parts.push(section(`부서 평균 및 분포와 비교 (${it.ym})`, renderTable(dist, 1) +
       (d["부서_인원"] < criterion("ot_dept_outlier").params.smallN ? `<p class="msg error">부서 인원이 ${d["부서_인원"]}명으로 적어 평균 · 분포 비교의 해석에 주의가 필요합니다.</p>` : ""),
       M.sqlEmpDeptDist(it.empId, it.ym), "같은 부서(현재 부서) · 같은 월의 근태 기록이 있는 직원과 비교합니다."));
-    parts.push(section("4. 탐지된 검토 조건 (같은 기간)", miniList(related)));
-    parts.push(section("5. 실제값과 기준값의 차이", diffTable(it, c, seen)));
-    parts.push(section(`6. 관련 원본 데이터 (attendance · ${it.ym} · ${raw.rows.length}일)`, renderTable(raw, 40), M.sqlEmpAttendanceRows(it.empId, it.ym), "근무 기록이 없는 날은 결근으로 판단하지 않습니다(휴일 · 휴가 · 휴직 정보 부족)."));
+    parts.push(section("같은 기간에 탐지된 검토 조건", miniList(related)));
+    parts.push(section("직원 ID와 기본 조직정보", kvTable(emp.rows[0] || {}), M.sqlEmployee(it.empId), "급여 금액은 이 화면에 표시하지 않습니다. 부서는 현재 기록 기준입니다."));
+    parts.push(section(`관련 원본 데이터 (attendance · ${it.ym} · ${raw.rows.length}일)`, renderTable(raw, 40), M.sqlEmpAttendanceRows(it.empId, it.ym), "근무 기록이 없는 날은 결근으로 판단하지 않습니다(휴일 · 휴가 · 휴직 정보 부족)."));
   } else if (kind === "dept_attrition") {
     const trend = await db.run(`WITH a AS (${M.sqlAttritionRolling(calcRules())}) SELECT 월, 평균_월말재직, 퇴사자_12개월, 퇴사율_pct FROM a WHERE 부서 = '${it.dept.replace(/'/g, "''")}' ORDER BY 1`);
     const from = M.addMonths(it.ym, -11);
@@ -206,12 +229,11 @@ FROM employees WHERE dept = '${it.dept.replace(/'/g, "''")}' AND leave_date BETW
     const leavers = await db.run(leaversSql);
     const reasons = {};
     for (const r of leavers.rows) reasons[r["퇴사사유"] || "(사유 없음)"] = (reasons[r["퇴사사유"] || "(사유 없음)"] || 0) + 1;
-    parts.push(section("1. 대상 조직", kvTable({ 부서: it.dept, 대상_기간: `${from} ~ ${it.ym} (12개월)`, 산식: "12개월 퇴사자 수 ÷ 평균 월말 재직 인원 × 100", 한계: "employees.dept(현재 · 퇴사 시점 기록) 기준, 조직 이동 이력 없음" })));
-    parts.push(section("2. 12개월 퇴사율 추이", `<div class="chart-box" id="d-chart"></div><details class="sql"><summary>표로 보기</summary>${renderTable(trend, 24)}</details>`));
+    parts.push(section("대상 조직", kvTable({ 부서: it.dept, 대상_기간: `${from} ~ ${it.ym} (12개월)`, 산식: "12개월 퇴사자 수 ÷ 평균 월말 재직 인원 × 100", 한계: "employees.dept(현재 · 퇴사 시점 기록) 기준, 조직 이동 이력 없음" })));
+    parts.push(section("12개월 퇴사율 추이", `<div class="chart-box" id="d-chart"></div><details class="sql"><summary>표로 보기</summary>${renderTable(trend, 24)}</details>`));
     charts.push(() => chart($("d-chart"), { type: "line", title: "12개월 퇴사율", labels: trend.rows.map((r) => r["월"]), series: [{ name: `${it.dept} 퇴사율`, values: trend.rows.map((r) => r["퇴사율_pct"]), color: COLORS.primary }], unit: "%", threshold: { value: c.params.value, label: `시범 기준 ${c.params.value}%` } }));
-    parts.push(section("3. 퇴사 사유 분포 (같은 12개월)", renderTable({ columns: [{ name: "퇴사사유" }, { name: "인원" }], rows: Object.entries(reasons).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ 퇴사사유: k, 인원: v })) }, 10)));
-    parts.push(section("4. 실제값과 기준값의 차이", diffTable(it, c, seen)));
-    parts.push(section(`5. 관련 원본 데이터 (employees · 퇴사자 ${leavers.rows.length}명)`, renderTable(leavers, 60), leaversSql));
+    parts.push(section("퇴사 사유 분포 (같은 12개월)", renderTable({ columns: [{ name: "퇴사사유" }, { name: "인원" }], rows: Object.entries(reasons).sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ 퇴사사유: k, 인원: v })) }, 10)));
+    parts.push(section(`관련 원본 데이터 (employees · 퇴사자 ${leavers.rows.length}명)`, renderTable(leavers, 60), leaversSql));
   } else if (kind === "pay_change") {
     const prev = M.addMonths(it.ym, -1);
     const itemsSql = `SELECT pay_item AS 급여항목,
@@ -221,12 +243,11 @@ FROM payroll WHERE pay_month IN ('${prev}', '${it.ym}') GROUP BY 1 ORDER BY abs(
     const byItem = await db.run(itemsSql);
     const trend = await db.run(M.sqlPayTrend());
     const rules = (await (await fetch("schema.json")).json()).rules || [];
-    parts.push(section("1. 대상", kvTable({ 대상: "회사 전체 월 급여 지급액", 대상_월: it.ym, 비교_월: prev })));
-    parts.push(section("2. 월별 지급액 증감률", `<div class="chart-box" id="d-chart"></div>`, M.sqlPayTrend()));
+    parts.push(section("대상", kvTable({ 대상: "회사 전체 월 급여 지급액 (payroll 합계, 회사 부담분 미포함)", 대상_월: it.ym, 비교_월: prev })));
+    parts.push(section("월별 지급액 증감률", `<div class="chart-box" id="d-chart"></div>`, M.sqlPayTrend()));
     charts.push(() => chart($("d-chart"), { type: "bar", title: "월별 지급액 증감률", labels: trend.rows.map((r) => r["월"]), series: [{ name: "전월 대비", values: trend.rows.map((r) => r["전월대비_pct"]), color: COLORS.primary }], unit: "%", highlightIndex: trend.rows.findIndex((r) => r["월"] === it.ym) }));
-    parts.push(section("3. 급여 항목별 증감 (회사 전체 합계)", renderTable(byItem, 10), itemsSql));
-    parts.push(section("4. 실제값과 기준값의 차이", diffTable(it, c, seen)));
-    parts.push(section("5. 참고: 데이터 사전 회사 규칙", `<ul class="facts">${rules.map((r) => `<li>${esc(r)}</li>`).join("")}</ul><p class="note">규칙과 일치하는 달이라도 원인을 자동으로 확정하지 않습니다. 급여 담당자 확인이 필요합니다.</p>`));
+    parts.push(section("급여 항목별 증감 (회사 전체 합계)", renderTable(byItem, 10), itemsSql));
+    parts.push(section("참고: 데이터 사전 회사 규칙", `<ul class="facts">${rules.map((r) => `<li>${esc(r)}</li>`).join("")}</ul><p class="note">규칙과 일치하는 달이라도 원인을 자동으로 확정하지 않습니다. 급여 담당자 확인이 필요합니다.</p>`));
   } else {
     // 데이터 품질
     const isAtt = it.rule === "att_dq";
@@ -237,10 +258,9 @@ FROM payroll WHERE pay_month IN ('${prev}', '${it.ym}') GROUP BY 1 ORDER BY abs(
     try { raw = await db.run(rawSql); } catch (e) { raw = { columns: [], rows: [] }; }
     let emp = { rows: [] };
     try { emp = await db.run(M.sqlEmployee(it.empId)); } catch { /* 사번 형식 이상 */ }
-    parts.push(section("1. 대상", kvTable({ 사번: it.empId, 부서: it.dept, 대상_기간: it.ym, 검사: it.issue, 건수: it.actualText, ...(it.dates ? { 해당_날짜: it.dates } : {}) }) +
+    parts.push(section("대상", kvTable({ 사번: it.empId, 부서: it.dept, 대상_기간: it.ym, 검사: it.issue, 건수: it.actualText, ...(it.dates ? { 해당_날짜: it.dates } : {}) }) +
       (emp.rows[0] ? "" : '<p class="msg error">직원 목록(employees)에 이 사번이 없습니다.</p>')));
-    parts.push(section("2. 실제값과 기준값의 차이", diffTable(it, c, seen)));
-    parts.push(section(`3. 관련 원본 데이터 (${isAtt ? "attendance" : "payroll — 금액은 상태로만 표시"})`, renderTable(raw, 40), rawSql));
+    parts.push(section(`관련 원본 데이터 (${isAtt ? "attendance" : "payroll — 금액은 상태로만 표시"})`, renderTable(raw, 40), rawSql));
   }
 
   if (seq !== detailSeq || !document.body.contains(box)) return;
@@ -292,19 +312,20 @@ function actionForm(it, kind) {
       <ol>${(PROCEDURES[kind] || PROCEDURES.dq).map((p) => `<li>${esc(p)}</li>`).join("")}</ol></div>
     <form id="act-form" class="act-form" autocomplete="off">
       <label>검토 상태<select name="status">${STATUSES.map((s) => `<option ${s === (r.status || "미확인") ? "selected" : ""}>${s}</option>`).join("")}</select></label>
-      <label>담당자<input type="text" name="owner" value="${v("owner")}" placeholder="이름 또는 부서"></label>
-      <label>조치 필요 여부<select name="needAction">${["미정", "필요", "불필요"].map((s) => `<option ${s === (r.needAction || "미정") ? "selected" : ""}>${s}</option>`).join("")}</select></label>
+      <label>담당자 (미확인 외 필수)<input type="text" name="owner" value="${v("owner")}" placeholder="이름 또는 부서"></label>
+      <label>조치 필요 여부 (선택)<select name="needAction">${["", "필요", "불필요", ...(r.needAction === "미정" ? ["미정"] : [])].map((s) => `<option value="${s}" ${s === (r.needAction || "") ? "selected" : ""}>${s || "—"}</option>`).join("")}</select></label>
       <label>조치 예정일<input type="date" name="plannedDate" value="${v("plannedDate")}"></label>
       <label>완료일<input type="date" name="doneDate" value="${v("doneDate")}"></label>
       <label>후속 점검일<input type="date" name="followupDate" value="${v("followupDate")}"></label>
-      <label class="wide">확인한 원인<textarea name="cause" rows="2">${v("cause")}</textarea></label>
-      <label class="wide">조치 내용<textarea name="actionText" rows="2">${v("actionText")}</textarea></label>
-      <label>종결 사유<select name="closeReason">${["", "데이터 오류 확인 · 수정", "확인 결과 조치 불필요", "기타"].map((s) => `<option value="${s}" ${s === (r.closeReason || "") ? "selected" : ""}>${s || "—"}</option>`).join("")}</select></label>
-      <label class="wide">최종 판단 근거<textarea name="finalBasis" rows="2">${v("finalBasis")}</textarea></label>
+      <label class="wide">확인한 원인 (선택)<textarea name="cause" rows="2">${v("cause")}</textarea></label>
+      <label class="wide">조치 내용 (선택)<textarea name="actionText" rows="2">${v("actionText")}</textarea></label>
+      <label>종결 사유 (선택)<select name="closeReason">${["", "데이터 오류 확인 · 수정", "확인 결과 조치 불필요", "기타"].map((s) => `<option value="${s}" ${s === (r.closeReason || "") ? "selected" : ""}>${s || "—"}</option>`).join("")}</select></label>
+      <label class="wide">최종 판단 근거 (선택)<textarea name="finalBasis" rows="2">${v("finalBasis")}</textarea></label>
+      ${r.legacyStatus ? `<p class="wide note">이전 상태 '${esc(r.legacyStatus)}'를 4단계 상태 '${esc(r.status)}'로 자동 변환했습니다. 원래 값은 기록에 남아 있습니다.</p>` : ""}
       <label class="wide">HR 담당자 평가 (후속 점검)<textarea name="evaluation" rows="2">${v("evaluation")}</textarea></label>
       <div class="wide form-foot">
         <button type="submit" class="btn primary">저장</button>
-        <span id="act-msg" class="msg"></span>
+        <span id="act-msg" class="msg" role="status">${flash.id === it.id ? esc(flash.text) : ""}</span>
       </div>
       <p class="wide note">${storage.persistent ? "로컬 데모: 이 브라우저의 저장소(localStorage)에만 저장됩니다. 다른 PC · 사용자와 공유되지 않고, 브라우저 데이터를 지우면 사라집니다." : "이 브라우저는 저장소를 쓸 수 없어 이 탭을 닫으면 기록이 사라집니다."} 담당자 인증 · 권한 · 수정 이력 보관은 구현되어 있지 않습니다.</p>
     </form>
@@ -321,9 +342,8 @@ function bindForm(it) {
     const data = Object.fromEntries(new FormData(f).entries());
     try {
       saveAction(it, data);
-      renderAll();
-      const m = $("act-msg");
-      if (m) { m.textContent = "저장했습니다."; m.className = "msg"; }
+      flash = { id: it.id, text: `저장했습니다 (${new Date().toLocaleTimeString("ko-KR")}).` };
+      renderAll(); // 목록의 처리 상태가 바로 바뀐다
     } catch (err) {
       const m = $("act-msg");
       m.textContent = err.message;
@@ -338,6 +358,10 @@ function markStale() {
 
 export function setup() {
   $("review-refresh").addEventListener("click", () => compute(true));
+  window.addEventListener("paylock-changed", () => {
+    const it = selectedId && items.find((x) => x.id === selectedId);
+    if (it && (it.rule === "pay_change" || it.rule === "pay_dq")) renderDetail(it);
+  });
   window.addEventListener("tables-changed", markStale);
   window.addEventListener("criteria-changed", markStale);
   window.addEventListener("detect-done", () => { if (lastResult()) { items = lastResult().items; } });

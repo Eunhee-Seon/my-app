@@ -2,7 +2,12 @@
 // 표시 규칙: 선 2px · 얇은 막대 · 옅은 격자 · 계열 2개 이상일 때만 범례 · 마우스를 올리면 값 표시.
 
 export const COLORS = { primary: "#2b5c8a", secondary: "#c27c0e", compare: "#9ca3af", highlight: "#da291c", threshold: "#6b7280" };
-const AXIS = "#6b7280", GRID = "#eef0f2", INK = "#242424";
+const AXIS = "#667085", GRID = "#eef0f2", INK = "#222222";
+const FS = 12; // 축 · 라벨 글자 크기
+/** 대략적인 글자 폭(한글 12.5px, 그 외 7px) — 라벨이 잘리지 않게 여백을 잡는 데 쓴다 */
+const textW = (s) => [...String(s)].reduce((w, c) => w + (c.charCodeAt(0) > 255 ? 12.5 : 7.2), 0);
+const isYm = (l) => /^\d{4}-\d{2}$/.test(String(l));
+const ymTip = (l) => (isYm(l) ? `${l.slice(0, 4)}년 ${Number(l.slice(5))}월` : String(l));
 const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
 const fmtNum = (v, d = 1) => (v === null || v === undefined || Number.isNaN(v) ? "—" : Number(v).toLocaleString("ko-KR", { maximumFractionDigits: d }));
 
@@ -68,16 +73,22 @@ function legend(series) {
 
 function render(el, spec) {
   const W = Math.max(280, el.clientWidth || 600);
-  const H = spec.height || 220;
+  const H = spec.height || 250;
   if (spec.type === "hbar") return renderHbar(el, spec, W);
   const series = spec.series;
   const labels = spec.labels;
   const all = series.flatMap((s) => s.values).filter((v) => v !== null && v !== undefined);
   if (spec.threshold) all.push(spec.threshold.value);
   if (!labels.length || !all.length) { el.innerHTML = '<p class="empty">표시할 데이터가 없습니다.</p>'; return; }
-  const ticks = niceTicks(Math.min(0, ...all), Math.max(0, ...all));
+  // Y축: 기본은 0부터. zeroBase:false 면 실제 범위에 맞추고 그 사실을 축 위에 표시한다.
+  const zero = spec.zeroBase !== false;
+  let lo = Math.min(...all), hi = Math.max(...all);
+  if (zero) { lo = Math.min(0, lo); hi = Math.max(0, hi); }
+  else { const pad = Math.max((hi - lo) * 0.25, Math.abs(hi) * 0.01, 1); lo -= pad; hi += pad; }
+  const ticks = niceTicks(lo, hi);
   const y0 = ticks[0], y1 = ticks[ticks.length - 1];
-  const ml = 46, mr = 12, mt = 8, mb = 26;
+  const monthMode = labels.every(isYm);
+  const ml = Math.max(40, ...ticks.map((t) => textW(axisFmt(t)))) + 10, mr = 14, mt = 22, mb = monthMode ? 42 : 30;
   const pw = W - ml - mr, ph = H - mt - mb;
   const sy = (v) => mt + ph - ((v - y0) / (y1 - y0)) * ph;
   const n = labels.length;
@@ -87,17 +98,34 @@ function render(el, spec) {
   const vf = spec.valueFmt || ((v) => `${fmtNum(v)}${unit}`);
 
   let g = "";
+  const yUnit = spec.yUnit || unit;
+  const axisNote = [yUnit ? `단위: ${yUnit}` : "", zero ? "" : `Y축은 ${axisFmt(y0)}부터 시작 (0 아님)`].filter(Boolean).join(" · ");
+  if (axisNote) g += `<text x="${ml - 6}" y="${12}" font-size="${FS}" fill="${AXIS}">${esc(axisNote)}</text>`;
   for (const t of ticks) {
     g += `<line x1="${ml}" x2="${W - mr}" y1="${sy(t)}" y2="${sy(t)}" stroke="${t === 0 ? "#d1d5db" : GRID}"/>`;
-    g += `<text x="${ml - 6}" y="${sy(t) + 4}" text-anchor="end" font-size="11" fill="${AXIS}">${esc(axisFmt(t))}</text>`;
+    g += `<text x="${ml - 8}" y="${sy(t) + 4}" text-anchor="end" font-size="${FS}" fill="${AXIS}">${esc(axisFmt(t))}</text>`;
   }
-  const every = Math.max(1, Math.ceil(n / Math.floor(pw / 44)));
-  labels.forEach((l, i) => {
-    if (i % every === 0 || i === n - 1) {
-      if (i !== n - 1 && n - 1 - i < every && i % every === 0 && i !== 0) return;
-      g += `<text x="${cx(i)}" y="${H - 8}" text-anchor="middle" font-size="11" fill="${AXIS}">${esc(shortLabel(l))}</text>`;
-    }
-  });
+  if (monthMode) {
+    // 월 눈금: 폭에 맞춰 1 · 2 · 3 · 6 · 12개월 간격, 달력 기준(예: 3개월 → 1 · 4 · 7 · 10월)으로 정렬. 연도는 둘째 줄에.
+    const step = [1, 2, 3, 6, 12].find((k) => band * k >= 46) || 12;
+    let lastYear = null;
+    labels.forEach((l, i) => {
+      const y = l.slice(0, 4), m = Number(l.slice(5));
+      if ((m - 1) % step !== 0) return;
+      g += `<line x1="${cx(i)}" x2="${cx(i)}" y1="${mt + ph}" y2="${mt + ph + 4}" stroke="#d1d5db"/>`;
+      g += `<text x="${cx(i)}" y="${mt + ph + 17}" text-anchor="middle" font-size="${FS}" fill="${AXIS}">${m}월</text>`;
+      if (y !== lastYear) {
+        g += `<text x="${cx(i)}" y="${mt + ph + 33}" text-anchor="middle" font-size="${FS}" font-weight="600" fill="${INK}">${y}</text>`;
+        lastYear = y;
+      }
+    });
+  } else {
+    const every = Math.max(1, Math.ceil(n / Math.max(1, Math.floor(pw / 52))));
+    labels.forEach((l, i) => {
+      if (i % every !== 0) return;
+      g += `<text x="${cx(i)}" y="${mt + ph + 18}" text-anchor="middle" font-size="${FS}" fill="${AXIS}">${esc(shortLabel(l))}</text>`;
+    });
+  }
 
   let marks = "";
   if (spec.type === "line") {
@@ -132,13 +160,13 @@ function render(el, spec) {
   if (spec.threshold) {
     const ty = sy(spec.threshold.value);
     marks += `<line x1="${ml}" x2="${W - mr}" y1="${ty}" y2="${ty}" stroke="${COLORS.threshold}" stroke-width="1.5" stroke-dasharray="4 4"/>`;
-    marks += `<text x="${W - mr}" y="${ty - 5}" text-anchor="end" font-size="11" fill="${INK}">${esc(spec.threshold.label)}</text>`;
+    marks += `<text x="${W - mr}" y="${ty - 5}" text-anchor="end" font-size="${FS}" fill="${INK}">${esc(spec.threshold.label)}</text>`;
   }
-  // 마우스 영역(열 단위)
+  // 마우스 영역(열 단위) — 정확한 연월과 값
   let hits = "";
   labels.forEach((l, i) => {
     const rows = series.map((s) => `<div><i style="background:${s.color}"></i>${esc(s.name)} <b>${esc(s.values[i] === null || s.values[i] === undefined ? "—" : vf(s.values[i]))}</b></div>`).join("");
-    hits += `<g class="hit" data-tip="${esc(`<div class="tt-h">${esc(l)}</div>${rows}`)}"><line x1="${cx(i)}" x2="${cx(i)}" y1="${mt}" y2="${mt + ph}"/><rect x="${ml + band * i}" y="${mt}" width="${band}" height="${ph}" fill="transparent"/></g>`;
+    hits += `<g class="hit" data-tip="${esc(`<div class="tt-h">${esc(ymTip(l))}</div>${rows}`)}"><line x1="${cx(i)}" x2="${cx(i)}" y1="${mt}" y2="${mt + ph}"/><rect x="${ml + band * i}" y="${mt}" width="${band}" height="${ph}" fill="transparent"/></g>`;
   });
   el.innerHTML = `${legend(series)}<svg class="chart" width="${W}" height="${H}" role="img" aria-label="${esc(spec.title || "")}">${g}${marks}${hits}</svg>`;
 }
@@ -146,14 +174,15 @@ function render(el, spec) {
 function renderHbar(el, spec, W) {
   const items = spec.labels.map((l, i) => ({ l, v: spec.values[i] })).filter((x) => x.v !== null && x.v !== undefined);
   if (!items.length) { el.innerHTML = '<p class="empty">표시할 데이터가 없습니다.</p>'; return; }
-  const row = 26, mt = 4;
-  const lw = Math.min(120, Math.max(56, ...items.map((x) => String(x.l).length * 13 + 8)));
-  const vw = 76;
-  const pw = Math.max(60, W - lw - vw - 8);
-  const max = Math.max(...items.map((x) => x.v), spec.threshold ? spec.threshold.value : 0) || 1;
-  const H = mt + items.length * row + 6;
+  const row = 30, mt = 4;
   const unit = spec.unit || "";
   const vf = spec.valueFmt || ((v) => `${fmtNum(v)}${unit}`);
+  // 부서명 · 값 라벨이 잘리지 않도록 글자 폭으로 여백을 잡는다
+  const lw = Math.min(Math.round(W * 0.38), Math.max(56, ...items.map((x) => textW(x.l) + 14)));
+  const vw = Math.max(48, ...items.map((x) => textW(vf(x.v)) + 12));
+  const pw = Math.max(40, W - lw - vw - 6);
+  const max = Math.max(...items.map((x) => x.v), spec.threshold ? spec.threshold.value : 0) || 1;
+  const H = mt + items.length * row + 6;
   let s = "";
   items.forEach((x, i) => {
     const y = mt + i * row;
@@ -161,9 +190,9 @@ function renderHbar(el, spec, W) {
     const fill = spec.highlight && spec.highlight === x.l ? COLORS.highlight : spec.color || COLORS.primary;
     s += `<g class="hit-row" data-tip="${esc(`<div class="tt-h">${esc(x.l)}</div><b>${esc(vf(x.v))}</b>`)}">
       <rect x="0" y="${y}" width="${W}" height="${row}" fill="transparent"/>
-      <text x="${lw - 8}" y="${y + row / 2 + 4}" text-anchor="end" font-size="12" fill="${INK}">${esc(x.l)}</text>
-      <path d="${barPath(lw, y + 6, Math.max(w, 1), row - 12, "right")}" fill="${fill}"/>
-      <text x="${lw + Math.max(w, 1) + 6}" y="${y + row / 2 + 4}" font-size="12" fill="${INK}">${esc(vf(x.v))}</text></g>`;
+      <text x="${lw - 8}" y="${y + row / 2 + 4}" text-anchor="end" font-size="${FS + 1}" fill="${INK}">${esc(x.l)}</text>
+      <path d="${barPath(lw, y + 8, Math.max(w, 1), row - 16, "right")}" fill="${fill}"/>
+      <text x="${lw + Math.max(w, 1) + 6}" y="${y + row / 2 + 4}" font-size="${FS + 1}" fill="${INK}">${esc(vf(x.v))}</text></g>`;
   });
   if (spec.threshold) {
     const tx = lw + (spec.threshold.value / max) * pw;

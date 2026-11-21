@@ -8,9 +8,13 @@ import * as opsTab from "./ops.js";
 import * as reviewTab from "./review.js";
 import * as actionsTab from "./actions.js";
 import { showTab, currentTab } from "./nav.js";
+import "./paylock.js";
 
 document.querySelectorAll(".tabs button").forEach((btn) => {
   btn.addEventListener("click", () => showTab(btn.dataset.tab));
+});
+document.querySelectorAll("#monitor-subnav button").forEach((btn) => {
+  btn.addEventListener("click", () => showTab(btn.dataset.sub));
 });
 window.addEventListener("hashchange", () => showTab(location.hash.slice(1)));
 
